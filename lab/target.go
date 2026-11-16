@@ -65,11 +65,28 @@ func triggerRotation(arn string) {
 	log.Printf("ROTATE-SECRET requested at %s", time.Now().UTC().Format(time.RFC3339))
 }
 
+// effectiveTLS resolves a --tls setting. "none" is plain TCP on purpose. "" follows the infrastructure: when the Proxy requires TLS
+// (REQUIRE_TLS=true in /etc/exp.env, from the stack's requireTls context) a plain connection would be refused, so the lab uses
+// "skip-verify" (encrypted, but the server certificate is NOT verified: a different condition from verified TLS). Anything else is
+// used as given.
+func effectiveTLS(requested string) string {
+	switch requested {
+	case "none":
+		return ""
+	case "":
+		if os.Getenv("REQUIRE_TLS") == "true" {
+			return "skip-verify"
+		}
+		return ""
+	}
+	return requested
+}
+
 type poolOpts struct {
 	maxOpen, maxIdle int
 	lifetime, idle   time.Duration
 	interpolate      bool
-	tls              string // "" (plain) | "skip-verify"
+	tls              string // "" (follow the infrastructure) | "none" (plain TCP) | "skip-verify" (TLS, certificate not verified)
 }
 
 // registry of every *sql.DB ever created, so we can report leaked (never closed) pools.
@@ -83,8 +100,8 @@ func newDB(t target, o poolOpts) (*sql.DB, error) {
 	mc := mysql.NewConfig()
 	mc.User, mc.Passwd, mc.Net, mc.DBName = t.user, t.pass, "tcp", t.db
 	mc.Addr = t.host + ":" + t.port
-	if o.tls != "" {
-		mc.TLSConfig = o.tls
+	if tl := effectiveTLS(o.tls); tl != "" {
+		mc.TLSConfig = tl
 	}
 	mc.InterpolateParams = o.interpolate // false => args use server-side prepared statements (pins on RDS Proxy)
 	mc.Timeout, mc.ReadTimeout, mc.WriteTimeout = 10*time.Second, 30*time.Second, 30*time.Second

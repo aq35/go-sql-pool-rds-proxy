@@ -50,8 +50,8 @@ func newPatDB(t target, o poolOpts, mutate func(*mysql.Config)) (*sql.DB, *count
 	mc := mysql.NewConfig()
 	mc.User, mc.Passwd, mc.Net, mc.DBName = t.user, t.pass, "tcp", t.db
 	mc.Addr = t.host + ":" + t.port
-	if o.tls != "" {
-		mc.TLSConfig = o.tls
+	if tl := effectiveTLS(o.tls); tl != "" {
+		mc.TLSConfig = tl
 	}
 	mc.InterpolateParams = o.interpolate
 	mc.Timeout, mc.ReadTimeout, mc.WriteTimeout = 10*time.Second, 60*time.Second, 60*time.Second
@@ -422,7 +422,7 @@ func runPatternsCmd(args []string) error {
 	var cf commonFlags
 	cf.register(fs, 10*time.Minute)
 	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap")
-	tlsF := fs.String("tls", "", "\"\" (plain) | skip-verify")
+	tlsF := fs.String("tls", "", "\"\" (follow the infrastructure: skip-verify if the Proxy requires TLS) | none (plain TCP, on purpose) | skip-verify (TLS, certificate not verified)")
 	proxyAZ := fs.String("proxy-az", "", "same | cross (PROXY_IP_SAME / PROXY_IP_CROSS)")
 	conns := fs.Int("conns", 32, "warmup: concurrent queries / pool size; pin-patterns: workers; stampede: pool size")
 	trials := fs.Int("trials", 10, "warmup: number of fresh pools measured")

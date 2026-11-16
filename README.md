@@ -31,7 +31,8 @@ results/       REPORT.md と、実験ごとの結果(<実験名>/<run>.r<n>/ に
 
 ```bash
 make check                          # ビルド・構文・実験定義の検証(AWS 不要)
-make deploy                         # 構築。EC2 が lab/ をビルドして待機(課金が始まる: 1 日あたり数 USD)
+make deploy                         # 構築(課金が始まる)→ 最後に make push で lab/ を配る。既定: TLS 必須、デバッグログなし、暗号化あり
+make deploy CDK_ARGS='-c requireTls=false -c envId=b'   # 設定を変える(一覧と理由: docs/infra-decisions.md)。測定の条件は run ごとに記録される
 make start EXP=idle-sweep REPEAT=3  # 実験を EC2 上で切り離して開始(PC を閉じても止まらない)
 make status EXP=idle-sweep          # 進捗
 make fetch EXP=idle-sweep           # results/idle-sweep/ に取得し、summary.md を作る
@@ -41,7 +42,7 @@ make derive                         # 結果から係数を出す(lab/coeffs.jso
 make validation-gen                 # 係数から、未知の条件の検証実験(day2)を作る
 make rules ARGS='--vcpu 2 --max-connections 1000 --containers 3 --workers 10 --active-avg 4'   # 式から設定値
 make destroy CONFIRM=yes            # 削除(ユーザーが求めたときだけ)
-make push                           # lab/ だけ更新したいとき(再構築なし)
+make push                           # lab/ だけ更新したいとき(再構築なし)。新しい場所でビルド・検査し、成功したときだけ入れ替える
 ```
 
 実験の一覧は `make help`(または `cd lab && python3 exp.py list`)。

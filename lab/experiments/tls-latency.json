@@ -19,16 +19,24 @@
  "runs": [
   {
    "id": "plain-same-0",
+   "infra": {
+    "require_tls": "false"
+   },
    "args": [
     "--max-idle=0",
-    "--proxy-az=same"
+    "--proxy-az=same",
+    "--tls=none"
    ]
   },
   {
    "id": "plain-same-5",
+   "infra": {
+    "require_tls": "false"
+   },
    "args": [
     "--max-idle=5",
-    "--proxy-az=same"
+    "--proxy-az=same",
+    "--tls=none"
    ]
   },
   {

@@ -48,7 +48,7 @@ def load_exp(name):
 def cw_series(metric, start, end, instance=False, cluster=False, stat=None):
     dim = ({"Name": "DBClusterIdentifier", "Value": os.environ["DB_CLUSTER_ID"]} if cluster
            else {"Name": "DBInstanceIdentifier", "Value": os.environ["WRITER_INSTANCE_ID"]} if instance
-           else {"Name": "ProxyName", "Value": METRICS["proxy_name"]})
+           else {"Name": "ProxyName", "Value": proxy_name()})
     q = [{"Id": "a", "MetricStat": {"Metric": {"Namespace": "AWS/RDS", "MetricName": metric["name"],
           "Dimensions": [dim]}, "Period": 60, "Stat": stat or metric["stat"]}, "ReturnData": True}]
     r = subprocess.run(["aws", "cloudwatch", "get-metric-data", "--start-time", iso(start), "--end-time", iso(end),
@@ -153,25 +153,37 @@ def ensure_class(target):
     raise RuntimeError(f"writer did not reach {target} available (now {cls} {status})")
 
 
-PROXY_DEFAULTS = {"IdleClientTimeout": 1800, "MaxConnectionsPercent": 80, "MaxIdleConnectionsPercent": 10}
+def proxy_name():
+    """The deployed Proxy (PROXY_NAME in /etc/exp.env, from the stack's envId). metrics.json only holds the fallback for old stacks."""
+    return os.environ.get("PROXY_NAME") or globals().get("METRICS", {}).get("proxy_name", "unknown")
+
+
+def proxy_defaults():
+    """The settings the stack was deployed with: what a run must leave behind. DebugLogging follows `-c debugLogging` at deploy."""
+    return {"IdleClientTimeout": 1800, "MaxConnectionsPercent": 80, "MaxIdleConnectionsPercent": 10,
+            "DebugLogging": os.environ.get("PROXY_DEBUG_LOGGING_AT_DEPLOY", "false").lower() == "true"}
+
+
 RESTORE = OUT / "proxy.restore"
 
 
 def proxy_read():
-    n = METRICS["proxy_name"]
-    idle = subprocess.run(["aws", "rds", "describe-db-proxies", "--db-proxy-name", n, "--query", "DBProxies[0].[IdleClientTimeout,Status]", "--output", "text"], capture_output=True, text=True, check=True).stdout.split()
+    n = proxy_name()
+    px = subprocess.run(["aws", "rds", "describe-db-proxies", "--db-proxy-name", n, "--query", "DBProxies[0].[IdleClientTimeout,Status,DebugLogging]", "--output", "text"], capture_output=True, text=True, check=True).stdout.split()
     tg = json.loads(subprocess.run(["aws", "rds", "describe-db-proxy-target-groups", "--db-proxy-name", n, "--query", "TargetGroups[0].[ConnectionPoolConfig,Status]", "--output", "json"], capture_output=True, text=True, check=True).stdout)
-    return {"IdleClientTimeout": int(idle[0]), "MaxConnectionsPercent": tg[0]["MaxConnectionsPercent"], "MaxIdleConnectionsPercent": tg[0]["MaxIdleConnectionsPercent"]}, idle[1] == "available" and tg[1] == "available"
+    return ({"IdleClientTimeout": int(px[0]), "MaxConnectionsPercent": tg[0]["MaxConnectionsPercent"], "MaxIdleConnectionsPercent": tg[0]["MaxIdleConnectionsPercent"],
+             "DebugLogging": px[2].lower() == "true"}, px[1] == "available" and tg[1] == "available")
 
 
 def proxy_apply(want):
-    """Set Proxy settings (subset of PROXY_DEFAULTS) and wait until they are in effect and the Proxy is available."""
-    n = METRICS["proxy_name"]; cur, _ = proxy_read()
+    """Set Proxy settings (subset of proxy_defaults()) and wait until they are in effect and the Proxy is available."""
+    n = proxy_name(); cur, _ = proxy_read()
     if all(cur[k] == v for k, v in want.items()): return
     if not RESTORE.exists(): RESTORE.write_text(json.dumps(cur))    # first change in this session remembers the original
     full = dict(cur, **want)
-    if "IdleClientTimeout" in want:
-        subprocess.run(["aws", "rds", "modify-db-proxy", "--db-proxy-name", n, "--idle-client-timeout", str(full["IdleClientTimeout"])], check=True, capture_output=True)
+    if "IdleClientTimeout" in want or "DebugLogging" in want:
+        subprocess.run(["aws", "rds", "modify-db-proxy", "--db-proxy-name", n, "--idle-client-timeout", str(full["IdleClientTimeout"]),
+                        "--debug-logging" if full["DebugLogging"] else "--no-debug-logging"], check=True, capture_output=True)
     if "MaxConnectionsPercent" in want or "MaxIdleConnectionsPercent" in want:
         subprocess.run(["aws", "rds", "modify-db-proxy-target-group", "--db-proxy-name", n, "--target-group-name", "default", "--connection-pool-config",
                         f"MaxConnectionsPercent={full['MaxConnectionsPercent']},MaxIdleConnectionsPercent={full['MaxIdleConnectionsPercent']}"], check=True, capture_output=True)
@@ -183,7 +195,7 @@ def proxy_apply(want):
 
 
 def proxy_restore():
-    want = json.loads(RESTORE.read_text()) if RESTORE.exists() else PROXY_DEFAULTS
+    want = json.loads(RESTORE.read_text()) if RESTORE.exists() else proxy_defaults()
     proxy_apply(want)
     if RESTORE.exists(): RESTORE.unlink()
     log("proxy settings restored:", want)
@@ -228,12 +240,19 @@ def sha256_file(p):
     except OSError: return None
 
 
+def infra_conditions():
+    """Infrastructure conditions of the deployed stack (/etc/exp.env, set at deploy time). They change what is measured, so they go into
+    every run's meta.json and into its manifest: a result always says whether TLS was required, which password auth the Proxy used, etc."""
+    g = lambda k: os.environ.get(k, "unknown")
+    return {"require_tls": g("REQUIRE_TLS"), "proxy_auth": g("PROXY_AUTH"), "env_id": g("ENV_ID"), "proxy_name": proxy_name()}
+
+
 def manifest_of(e, r, cls, version, binary_sha):
     """Everything that decides what a run measures. A finished run is reused only if this hash is unchanged."""
     body = {"scenario": e["scenario"], "args": e.get("common", []) + r.get("args", []), "secret": r.get("secret", e.get("secret", "admin")),
             "proxy": dict(e.get("proxy", {}), **r.get("proxy", {})), "floor": e.get("floor", FLOOR_DEFAULT), "pre_gap_s": e.get("pre_gap_s", 0),
             "observe_after_s": e.get("observe_after_s", 120), "required_metrics": e.get("required_metrics"), "aurora_class": cls,
-            "git": version, "binary_sha256": binary_sha}
+            "git": version, "binary_sha256": binary_sha, "infra": infra_conditions()}
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
@@ -318,6 +337,22 @@ def _run_experiment(exp, repeat=0, only=None):
                 log("superseded", rid, "->", dst.name, "(manifest changed or run was not valid)")
             rdir.mkdir(exist_ok=True)
             write_status(exp_dir, current=rid, done=done)
+            need = r.get("infra", {})          # e.g. {"require_tls": "false"}: a run that compares plain TCP only makes sense on such a stack
+            have = infra_conditions()
+            wrong = [f"{k}: needs {v}, the stack has {have.get(k)}" for k, v in need.items() if str(v).lower() != str(have.get(k)).lower()]
+            if wrong:                          # do not run, and do not pretend: keep a record that says why, marked invalid
+                log("NOT RUN", rid, "- the deployed infrastructure does not match:", wrong)
+                (rdir / "client.log").write_text("not run: " + "; ".join(wrong) + "\n")
+                (rdir / "metrics.json").write_text(json.dumps({"window": [], "series": {}}))
+                (rdir / "meta.json").write_text(json.dumps({
+                    "experiment": a.exp, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": [], "git": version, "manifest": mf,
+                    "start": iso(now()), "run_end": iso(now()), "rc": None, "infra": have, "condition": "not run (infrastructure mismatch)",
+                    "baseline": {"unmet": False, "last_points": [], "floor": e.get("floor", FLOOR_DEFAULT)}}, indent=1))
+                (rdir / "valid.json").write_text(json.dumps({"valid": False, "reasons": ["infra_mismatch: " + "; ".join(wrong)]}))
+                (rdir / "ok").write_text("")
+                invalid.append(rid + ":infra_mismatch"); done += 1
+                write_status(exp_dir, done=done, failed=failed, invalid=invalid)
+                continue
             try:
                 want = dict(e.get("proxy", {}), **r.get("proxy", {}))
                 proxy_apply(want) if want else proxy_restore() if RESTORE.exists() else None
@@ -337,6 +372,7 @@ def _run_experiment(exp, repeat=0, only=None):
             go_ver, deps = build_info()
             meta = {"experiment": a.exp, "go_version": go_ver, "go_deps": deps, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version, "binary_sha256": binary_sha,
                     "manifest": mf, "start": iso(start), "run_end": iso(run_end), "rc": rc, "baseline": base,
+                    "infra": infra_conditions(), "proxy_settings": proxy_read()[0],     # what the Proxy was set to while this run executed
                     # floor >= 50: the Proxy was NOT waited down to its idle floor, so Proxy->Aurora connections may be left over from the previous run
                     "condition": "warm-proxy (previous connections may remain)" if floor >= 50 else "settled (Proxy connections at the floor)"}
             (rdir / "meta.json").write_text(json.dumps(meta, indent=1))

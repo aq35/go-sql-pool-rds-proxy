@@ -205,4 +205,25 @@ Proxy の IdleClientTimeout を 60 秒にし、各ワーカーが約 60 秒お�
 | P1 govulncheck が exit 2 でも CI が成功する | 許可リスト方式のブロッキングに変更(許可項目に期限。許可していても毎回表示)。脆弱性 ID、到達可能性、修正版、EC2 の Go、アップグレード手順を `docs/known-vulnerabilities.md` に記載。`go_version` を run の `meta.json` に記録 | 実装済み。**脆弱性そのものは未修正**(EC2 の Go が 1.25 以上か未確認のため)。**訂正**: 最初の CI の「exit 2」は脆弱性の検出ではなく、`govulncheck` のクラッシュ(検出は exit 3)だった。クラッシュは失敗扱いにし、スキャンの Go を 1.25 に固定した |
 | 「最新にする」(Go、依存、CI の道具) | Go 1.27.4、依存(ドライバ v1.10.1、gorm v1.31.2、`x/text` v0.44.0 など)、`golangci-lint` v2.15.0、`govulncheck` v1.9.0、Actions、`aws-cdk-lib` 2.277.0 を更新。`govulncheck` は「脆弱性なし」(ローカル)。許可リストは空 | ローカルで `make check`、`cdk synth` を確認。**EC2 でのビルド(ツールチェーンの自動取得)は未検証**。TypeScript は 5.9.3(TypeScript 7 は `ts-node` が未対応) |
 
+### インフラの指摘(14 件 + 総評 3 件)への対応
+
+判断の根拠と、権限の一覧、未検証の項目は、[docs/infra-decisions.md](../docs/infra-decisions.md)。**すべて、`cdk synth` と型検査までの確認で、AWS では未実行。**
+
+| 指摘 | 対応 |
+|---|---|
+| P1 TLS(`requireTLS: false`) | 既定を `true` に。`-c requireTls=false` で切り替え。`--tls` を指定しない Go クライアントは、TLS 必須のときは `skip-verify` で接続(`skip-verify` は証明書を検証しないと明記)。平文を比べる run は `--tls=none` と `infra.require_tls=false` を要求し、合わないスタックでは、**実行せず「無効」として記録** |
+| P1 認証方式(`MYSQL_NATIVE_PASSWORD` 固定) | 既定は `native` のまま(比較可能性のため、黙って変えない)。`-c proxyAuth=sha2` を別条件として追加。条件は `meta.json` と manifest に入る |
+| P1 最小権限 | `ModifyDBInstance` を、この書き込みインスタンスだけに。ターゲットグループを、ワイルドカードから、この Proxy のものに。使う実験を表にした。**足りるかは未検証** |
+| P1 初期化失敗のシグナル | 失敗時に `FAILURE` を送る `trap`(ERR)。ログを `/var/log/lab-bootstrap.log` に。Go のツールチェーンの取得は、`make push` に移したので、失敗は `make deploy` の最後に出る |
+| P2 公開サブネット | 理由と、NAT / エンドポイントとの比較を記録し、今は現状維持(受信は許可しない、SSM のみ) |
+| P2 デバッグログ | 既定でオフ。`pat-pin` の間だけ、実験の `proxy` ブロックで有効にして、戻す。設定は `meta.json` の `proxy_settings` に残る |
+| P2 80 は理論値 | ダッシュボードの注記を直した(80 は設定上の理論値、測った上限は `MaxDatabaseConnectionsAllowed`。`MaxIdleConnectionsPercent` は上限) |
+| P1 `lab/` の変更で EC2 が置換される | EC2 の論理 ID を固定。`lab/` をスタックから外し、`make push` で配る。`make deploy` は最後に `make push`。既存のスタックはなく(削除済み、結果は取得済み)、置換の影響はない |
+| P2 `RDSOSMetrics` | CDK の外の共有ロググループなので、削除しない。`make finish` が保持期間と保存量を表示。RUNBOOK に、確認と手での削除の手順を記載 |
+| P2 固定の物理名 | `envId` で、Proxy、ログ、ダッシュボード、アラームの名前を変更可能に。`exp.py` と `finish.py` は、Proxy 名をスタックの出力から取る。`lab/metrics.json` の名前は、古いスタック用の代替 |
+| P2 費用と後片付け | 削除はしない方針のまま、タグ `lab:expires-on`、`-c budgetEmail`(1 日の予算の通知のみ、アドレスはリポジトリに入れない)、`make finish` の警告 |
+| P1 Aurora の暗号化 | `storageEncrypted: true` を明示 |
+| P1 EBS の暗号化と削除 | `encrypted: true`、`deleteOnTermination: true` を明示。EBS は EC2 と一緒に消えるので、削除の前に結果を取得する(RUNBOOK に記載) |
+| P2 パスワードを引数で渡す | 0600 の一時ファイルから `mysql --defaults-extra-file` で読み、終了時に削除。コマンドライン、ログに出ない |
+
 **未検証が多い理由**: AWS のスタックは、レビューの前に削除を始めていた。新しい実装は、`make check` と、ローカルの MySQL での一部の確認(`idle-gap` の `dedicated` の動作は未確認)だけで、AWS での実行は、まだ行っていない。

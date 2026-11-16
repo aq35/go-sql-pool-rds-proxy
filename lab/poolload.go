@@ -32,7 +32,7 @@ func runPoolLoad(args []string) error {
 	lifetime := fs.Duration("lifetime", 5*time.Minute, "SetConnMaxLifetime (0 = unlimited)")
 	idleTime := fs.Duration("idle-time", 0, "SetConnMaxIdleTime (0 = none)")
 	interp := fs.Bool("interpolate", true, "interpolateParams (false => server-side prepared statements, pinned on RDS Proxy)")
-	tlsF := fs.String("tls", "", "\"\" (plain) | skip-verify (TLS to the proxy)")
+	tlsF := fs.String("tls", "", "\"\" (follow the infrastructure: skip-verify if the Proxy requires TLS) | none (plain TCP, on purpose) | skip-verify (TLS, certificate not verified)")
 	proxyAZ := fs.String("proxy-az", "", "same | cross: connect to the proxy IP in the client's AZ / the other AZ (PROXY_IP_SAME / PROXY_IP_CROSS)")
 	lockMode := fs.String("lock-mode", "none", "none | pool | release | direct | table")
 	pinProb := fs.Float64("pin-prob", 0.2, "probability per iteration of taking the lock (lock-mode != none)")

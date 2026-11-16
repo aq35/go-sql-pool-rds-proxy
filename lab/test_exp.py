@@ -67,6 +67,39 @@ class Judge(unittest.TestCase):
 class Manifest(unittest.TestCase):
     E = {"scenario": "patterns", "common": ["--mode=warmup"], "floor": 100}
 
+    def test_infrastructure_conditions_change_the_hash(self):
+        r = {"id": "a", "args": ["--warm=true"]}
+        import os
+        old = {k: os.environ.get(k) for k in ("REQUIRE_TLS", "PROXY_AUTH")}
+        try:
+            os.environ["REQUIRE_TLS"], os.environ["PROXY_AUTH"] = "true", "native"
+            base = exp.manifest_of(self.E, r, "db.r6g.large", "abc", "bin1")
+            os.environ["REQUIRE_TLS"] = "false"
+            self.assertNotEqual(base, exp.manifest_of(self.E, r, "db.r6g.large", "abc", "bin1"))      # TLS required or not
+            os.environ["REQUIRE_TLS"], os.environ["PROXY_AUTH"] = "true", "sha2"
+            self.assertNotEqual(base, exp.manifest_of(self.E, r, "db.r6g.large", "abc", "bin1"))      # password auth of the Proxy
+        finally:
+            for k, v in old.items():
+                os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+
+    def test_infra_conditions_reports_the_stack(self):
+        import os
+        os.environ.update(REQUIRE_TLS="false", PROXY_AUTH="sha2", ENV_ID="b", PROXY_NAME="rdsproxy-b")
+        try:
+            self.assertEqual(exp.infra_conditions(), {"require_tls": "false", "proxy_auth": "sha2", "env_id": "b", "proxy_name": "rdsproxy-b"})
+            self.assertEqual(exp.proxy_name(), "rdsproxy-b")
+        finally:
+            for k in ("REQUIRE_TLS", "PROXY_AUTH", "ENV_ID", "PROXY_NAME"): os.environ.pop(k, None)
+
+    def test_proxy_defaults_follow_the_deploy(self):
+        import os
+        os.environ["PROXY_DEBUG_LOGGING_AT_DEPLOY"] = "true"
+        try:
+            self.assertTrue(exp.proxy_defaults()["DebugLogging"])
+        finally:
+            os.environ.pop("PROXY_DEBUG_LOGGING_AT_DEPLOY", None)
+        self.assertFalse(exp.proxy_defaults()["DebugLogging"])
+
     def test_same_inputs_same_hash(self):
         r = {"id": "a", "args": ["--warm=true"]}
         self.assertEqual(exp.manifest_of(self.E, r, "db.r6g.large", "abc", "bin1"), exp.manifest_of(self.E, r, "db.r6g.large", "abc", "bin1"))

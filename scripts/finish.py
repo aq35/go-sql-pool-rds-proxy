@@ -70,6 +70,9 @@ for exp, d, step in checks:
             if miss: problems.append(f"{tag}: missing files {miss}"); continue
             meta = json.loads((rd / "meta.json").read_text()); val = json.loads((rd / "valid.json").read_text())
             if "rc" not in meta or "manifest" not in meta: problems.append(f"{tag}: meta.json has no rc / manifest")
+            if any(x.startswith("infra_mismatch") for x in val["reasons"]):
+                validity.setdefault(exp, []).append((tag, val))   # deliberately not run on this stack; the reason is the evidence
+                continue
             try:
                 m = json.loads((rd / "metrics.json").read_text())["series"]
             except Exception as ex:
@@ -91,10 +94,33 @@ for exp_name, rows in validity.items():
     print(f"  {exp_name}: {len(rows) - len(bad)}/{len(rows)} valid runs")
     for t, r in bad: print(f"    INVALID {t}: {', '.join(r)}")
 
-pr = sh("aws rds describe-db-proxies --db-proxy-name rdsproxy-exp --query 'DBProxies[0].IdleClientTimeout' --output text; "
-        "aws rds describe-db-proxy-target-groups --db-proxy-name rdsproxy-exp --query 'TargetGroups[0].ConnectionPoolConfig.[MaxConnectionsPercent,MaxIdleConnectionsPercent]' --output text")
-if pr.stdout.split() != ["1800", "80", "10"]:
-    problems.append(f"Proxy settings are not at the defaults 1800/80/10 (now {pr.stdout.split() or pr.stderr[-120:]}); run exp.py proxy-restore")
+def stack_output(key):
+    r = sh(f"source scripts/lib.sh && out {key}", executable="/bin/bash")
+    v = r.stdout.strip()
+    return "" if v in ("", "None") else v
+
+
+# The Proxy name and the deploy-time debug-logging setting come from the stack (envId can change the name); not hard-coded.
+proxy_name = stack_output("ProxyName")
+if not proxy_name:
+    problems.append("the stack has no ProxyName output (is it still deployed?): cannot check that the Proxy settings were restored")
+else:
+    want_debug = stack_output("DebugLoggingAtDeploy").lower() == "true"
+    pr = sh(f"aws rds describe-db-proxies --db-proxy-name {proxy_name} --query 'DBProxies[0].[IdleClientTimeout,DebugLogging]' --output text; "
+            f"aws rds describe-db-proxy-target-groups --db-proxy-name {proxy_name} --query 'TargetGroups[0].ConnectionPoolConfig.[MaxConnectionsPercent,MaxIdleConnectionsPercent]' --output text")
+    got = pr.stdout.split()
+    if len(got) != 4 or got[0] != "1800" or got[1].lower() != str(want_debug).lower() or got[2:] != ["80", "10"]:
+        problems.append(f"Proxy settings are not what the stack was deployed with (idle timeout 1800, debug logging {want_debug}, pool 80/10); "
+                        f"now {got or pr.stderr[-120:]}; run exp.py proxy-restore")
+
+# Enhanced Monitoring writes to the shared, AWS-managed log group RDSOSMetrics (1-second interval: a lot of log volume). It is not part of
+# the stack and is NOT deleted with it. Report what is there; deleting anything stays a human decision.
+lg = sh("aws logs describe-log-groups --log-group-name-prefix RDSOSMetrics --query 'logGroups[?logGroupName==`RDSOSMetrics`].[retentionInDays,storedBytes]' --output text")
+if lg.stdout.strip():
+    ret, stored = (lg.stdout.split() + ["?", "?"])[:2]
+    print(f"\nNOTE RDSOSMetrics (shared, not deleted with the stack): retention {ret if ret != 'None' else 'never expires'} days, {stored} bytes stored. "
+          "After the stack is destroyed, this stack's log stream remains until its retention ends; "
+          "delete it only if nothing else uses this account's Enhanced Monitoring: aws logs delete-log-stream --log-group-name RDSOSMetrics --log-stream-name <DbiResourceId>")
 
 idx = [f"# campaign {name}", "", camp.get("description", ""), ""]
 for d in sorted((root / "results").glob("*__db.*")):

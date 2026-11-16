@@ -30,10 +30,11 @@ case $cmd in
     ssm "source /etc/exp.env && aws rds modify-db-instance --db-instance-identifier \$WRITER_INSTANCE_ID --db-instance-class $exp --apply-immediately --query DBInstance.DBInstanceStatus --output text" ;;
   push)
     git -C "$root" rev-parse --short HEAD > "$root/lab/VERSION"
-    b64=$(tar czf - -C "$root" --exclude=lab/lab --exclude=lab/out --exclude=lab/net.env lab | base64 | tr -d '\n')
-    [ ${#b64} -lt 90000 ] || { echo "lab/ is ${#b64} chars base64; SSM limit ~97k. Redeploy (make deploy) instead." >&2; exit 1; }
+    # xz: the SSM command parameter is limited to ~97k characters; gzip needed ~95k for lab/ (too close), xz about 70k
+    b64=$(tar cf - -C "$root" --exclude=lab/lab --exclude=lab/out --exclude=lab/net.env lab | xz -9 | base64 | tr -d '\n')
+    [ ${#b64} -lt 90000 ] || { echo "lab/ is ${#b64} chars base64; the SSM limit is ~97k. Ship lab/ through S3 instead of SSM." >&2; exit 1; }
     # Atomic: unpack + build + `exp.py check` in ~/lab.new; only if all succeed, swap it in (the old tree stays as ~/lab.old).
     # Refuses to run while an experiment holds ~/lab/out/.lock. out/ (results) and net.env move to the new tree.
-    ssm "set -e; cd ~; if [ -e lab/out/.lock ] && ! flock -n lab/out/.lock true; then echo 'an experiment is running; not pushing' >&2; exit 1; fi; rm -rf lab.new && mkdir lab.new && echo $b64 | base64 -d | tar xz -C lab.new --strip-components=1 && cd lab.new && chmod +x *.sh exp.py && GOTOOLCHAIN=auto go build -o lab . && python3 -I exp.py check && cd ~ && if [ -d lab/out ]; then mv lab/out lab.new/out; fi; if [ -f lab/net.env ]; then cp lab/net.env lab.new/net.env; fi; rm -rf lab.old; mv lab lab.old; mv lab.new lab; echo PUSHED git=\$(cat lab/VERSION) bin=\$(sha256sum lab/lab | cut -c1-12)" ;;
+    ssm "set -e; cd ~; if [ -e lab/out/.lock ] && ! flock -n lab/out/.lock true; then echo 'an experiment is running; not pushing' >&2; exit 1; fi; rm -rf lab.new && mkdir lab.new && echo $b64 | base64 -d | tar xJ -C lab.new --strip-components=1 && cd lab.new && chmod +x *.sh exp.py && GOTOOLCHAIN=auto go build -o lab . && python3 -I exp.py check && cd ~ && if [ -d lab/out ]; then mv lab/out lab.new/out; fi; if [ -f lab/net.env ]; then cp lab/net.env lab.new/net.env; fi; rm -rf lab.old; if [ -d lab ]; then mv lab lab.old; fi; mv lab.new lab; echo PUSHED git=\$(cat lab/VERSION) bin=\$(sha256sum lab/lab | cut -c1-12)" ;;
   *) echo "unknown command $cmd" >&2; exit 2 ;;
 esac

@@ -5,12 +5,14 @@ REPEAT ?=
 CAMPAIGN ?= day1
 DESTROY_AFTER ?=
 CLASS ?=
+CDK_ARGS ?=
 
 .PHONY: help check deploy start status fetch push destroy campaign campaign-status finish resize derive validation-gen rules
 help:
 	@echo "make check                 vet/build the Go client, validate experiments, shell/python syntax, tsc"
-	@echo "make deploy                cdk deploy (ships lab/ to the EC2 instance, builds it there)"
-	@echo "make push                  copy the current lab/ to the instance without redeploying"
+	@echo "make deploy [CDK_ARGS='-c requireTls=false -c envId=b ...']   cdk deploy, then make push (the lab is NOT part of the stack)"
+	@echo "                           knobs (infra/lib/proxy-experiment-stack.ts): envId requireTls proxyAuth debugLogging ttlHours budgetEmail budgetUsdDaily auroraClass clientClass"
+	@echo "make push                  copy the current lab/ to the instance, build and check it in a new directory, then swap it in (atomic)"
 	@echo "make start EXP=<name> [REPEAT=3]   run an experiment detached on the instance (lab/experiments/<name>.json)"
 	@echo "make status EXP=<name>     progress of a running experiment"
 	@echo "make fetch EXP=<name>      download results/<name>/ and write summary.md"
@@ -33,8 +35,8 @@ check:
 	@echo "check OK (cdk synth: cd infra && npx cdk synth --quiet)"
 
 deploy:
-	git rev-parse --short HEAD > lab/VERSION
-	cd infra && (test -d node_modules || npm ci --silent) && npx cdk deploy --require-approval never
+	cd infra && (test -d node_modules || npm ci --silent) && npx cdk deploy --require-approval never $(CDK_ARGS)
+	scripts/lab.sh push
 
 push:
 	scripts/lab.sh push
