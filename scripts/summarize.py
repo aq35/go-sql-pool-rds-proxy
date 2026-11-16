@@ -85,7 +85,6 @@ def capacity_summary():
         qknee = min((n for n, r in ok.items() if best and r["qps"] >= 0.9 * best), default=None)
         p99min = min((r["p99"] for r in ok.values()), default=None)
         pknee = max((n for n, r in ok.items() if p99min and r["p99"] <= 2 * p99min), default=None)
-        at = rows.get(max((n for n in rows if qknee and n <= qknee * 2), default=qknee), None) if qknee else None
         top = rows[max(rows)]      # highest level: what happens when we push beyond the knee
         cpu_at = (top["acpu"] if top["acpu"] is not None else None)
         if cpu_at is None: diag = "判定不能（Aurora CPU が取れていない）"

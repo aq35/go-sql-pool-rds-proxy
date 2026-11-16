@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fetch unit prices from the AWS Price List API (needs pricing:GetProducts) -> lab/pricing.json. Region ap-northeast-1 (Tokyo).
 Unit prices for cost estimates (docs/dynamodb-fit.md). Re-run to refresh; the file records the fetch date."""
-import datetime, json, pathlib, subprocess, sys
+import datetime, json, pathlib, subprocess
 
 root = pathlib.Path(__file__).resolve().parent.parent
 LOC = "Asia Pacific (Tokyo)"

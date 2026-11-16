@@ -6,13 +6,16 @@ set -euo pipefail
 source /etc/exp.env
 ADMIN_ARN="$SECRET_ARN"
 ADMIN_JSON=$(aws secretsmanager get-secret-value --secret-id "$ADMIN_ARN" --query SecretString --output text)
-export ADMIN_USER=$(jq -r .username <<<"$ADMIN_JSON") ADMIN_PASS=$(jq -r .password <<<"$ADMIN_JSON")
+ADMIN_USER=$(jq -r .username <<<"$ADMIN_JSON")
+ADMIN_PASS=$(jq -r .password <<<"$ADMIN_JSON")
+export ADMIN_USER ADMIN_PASS
 export DB_DIRECT_HOST="$CLUSTER_ENDPOINT"     # used by lock-mode=direct and the Aurora sampler
 # SECRET=admin (default) | app  (app = the rotated `appuser` secret; the client then re-reads it on every pool rotation)
 if [ "${SECRET:-admin}" = "app" ]; then export SECRET_ARN="$APP_SECRET_ARN"; fi
 SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query SecretString --output text)
-export DB_USER=$(jq -r .username <<<"$SECRET_JSON")
-export DB_PASS=$(jq -r .password <<<"$SECRET_JSON")
+DB_USER=$(jq -r .username <<<"$SECRET_JSON")
+DB_PASS=$(jq -r .password <<<"$SECRET_JSON")
+export DB_USER DB_PASS
 export DB_PORT=3306
 case "${TARGET:-proxy}" in
   proxy)   export DB_HOST="$PROXY_ENDPOINT" ;;

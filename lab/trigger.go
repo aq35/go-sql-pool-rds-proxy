@@ -98,7 +98,6 @@ func runTrigger(ctx context.Context, t target, mode string, k int, holdFor, obse
 			_ = c.Raw(func(any) error { return driver.ErrBadConn })
 			_ = c.Close()
 		}
-		conns = nil
 		stamp("sockets-closed")
 		select {
 		case <-ctx.Done():

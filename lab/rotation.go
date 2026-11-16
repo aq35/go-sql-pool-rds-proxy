@@ -88,7 +88,7 @@ func (c *trackedConn) BeginTx(ctx context.Context, o driver.TxOptions) (driver.T
 	if x, ok := c.Conn.(driver.ConnBeginTx); ok {
 		return x.BeginTx(ctx, o)
 	}
-	return c.Conn.Begin()
+	return c.Conn.Begin() //nolint:staticcheck // the wrapped driver.Conn may only implement the legacy Begin
 }
 func (c *trackedConn) Ping(ctx context.Context) error {
 	if x, ok := c.Conn.(driver.Pinger); ok {
@@ -149,10 +149,9 @@ func (m *credMgr) get() (user, pass, ver string) {
 func (m *credMgr) force() { m.mu.Lock(); m.forced = true; m.mu.Unlock() }
 
 type rotConnector struct {
-	cm     *credMgr
-	base   *mysql.Config
-	reg    *connReg
-	tlsCfg string
+	cm   *credMgr
+	base *mysql.Config
+	reg  *connReg
 }
 
 func isAuthErr(err error) bool {

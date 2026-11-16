@@ -25,8 +25,9 @@ help:
 	@echo; cd lab && python3 exp.py list
 
 check:
-	cd lab && gofmt -l . | (! grep .) && go vet ./... && go test ./... >/dev/null && go build -o lab . && python3 -I exp.py check && PYTHONDONTWRITEBYTECODE=1 python3 test_rules.py; r=$$?; rm -f lab; exit $$r
+	cd lab && gofmt -l . | (! grep .) && go vet ./... && go test ./... >/dev/null && go build -o lab . && python3 -I exp.py check && PYTHONDONTWRITEBYTECODE=1 python3 test_rules.py && PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -q test_exp; r=$$?; rm -f lab; exit $$r
 	for f in lab/*.sh scripts/*.sh; do bash -n $$f || exit 1; done
+	scripts/check-no-sensitive.sh
 	python3 -I -m py_compile lab/exp.py lab/rules.py scripts/summarize.py scripts/finish.py scripts/derive_coeffs.py scripts/gen_validation.py; rm -rf lab/__pycache__ scripts/__pycache__
 	cd infra && (test -d node_modules || npm ci --silent) && npx tsc --noEmit -p .
 	@echo "check OK (cdk synth needs AWS credentials: cd infra && npx cdk synth --quiet)"

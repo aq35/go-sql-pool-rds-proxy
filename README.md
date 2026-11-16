@@ -52,6 +52,22 @@ make push                           # lab/ だけ更新したいとき(再構築
 2. **新しい種類の負荷**なら、`lab/scenario_<名前>.go` に `func(args []string) error` を作り、`lab/main.go` の `scenarios` に登録する。フラグは `newFlagSet` で定義し、`commonFlags`(duration, report-every)を使う。
 3. `make check` で、実験の引数が、シナリオのフラグに存在するかを確認する。
 
+## CI(プルリクエストで見えるチェック)
+
+`.github/workflows/ci.yml`。PR の「Checks」に、次が別々に出る。
+
+| チェック | 内容 | 落ちる条件 |
+|---|---|---|
+| Go | `gofmt`、`go vet`、`golangci-lint`、`go test -race`(カバレッジ)、ビルド、実験定義の検証 | いずれかが失敗 |
+| Go vulnerabilities | `govulncheck`(最新の Go で) | **報告のみ**(警告)。既知: `golang.org/x/text` は、修正版が Go 1.25 を要求し、EC2 の Go が対応しているか未確認のため、上げていない |
+| Python | `ruff`(構文、未定義・未使用)、コンパイル、単体テスト | いずれかが失敗 |
+| Shell | `shellcheck`(警告以上) | 警告以上がある |
+| Infra | CDK の型検査、`npm audit` | high 以上で失敗(全レベルは要約に表示) |
+| No credentials | アクセスキー、秘密鍵、アカウント付きの ARN、エンドポイント名、プライベート IP | 見つかった |
+| Dependency review | PR で増えた脆弱な依存 | high 以上(リポジトリで依存グラフが有効なときだけ) |
+
+同じ内容は、手元で `make check` でも実行できる。依存の更新は Dependabot(週 1 回)が PR を作る。
+
 ## 結果の読み方で守ること
 
 - 各 run の開始前に、Proxy の `DatabaseConnections` が下限(約 5)に戻るまで待つ(`exp.py`)。**戻らなかった run は summary.md の警告に出る。その run の接続数は比較に使わない。**

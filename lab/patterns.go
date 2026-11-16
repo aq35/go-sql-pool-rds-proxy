@@ -556,7 +556,6 @@ func wave(ctx context.Context, db *sql.DB, n int, kind string, rows int) []time.
 
 func patWarmup(ctx context.Context, t target, tlsF string, n, trials int, pause time.Duration, warm bool, kind string, rows int) error {
 	var p50s, maxs, warms, w2s []float64
-	var connects []float64
 	for i := 0; i < trials && ctx.Err() == nil; i++ {
 		db, cc, err := newPatDB(t, poolOpts{maxOpen: n, maxIdle: n, interpolate: true, tls: tlsF}, nil)
 		if err != nil {
@@ -581,7 +580,7 @@ func patWarmup(ctx context.Context, t target, tlsF string, n, trials int, pause 
 		p50, mx, p50b := quantile(w1, 0.5), quantile(w1, 1), quantile(w2, 0.5)
 		result("mode", "warmup", "trial", i, "warm", warm, "conns", n, "warm_ms", warmMs, "w1_p50_ms", ms(p50), "w1_max_ms", ms(mx),
 			"w2_p50_ms", ms(p50b), "connects", c1, "connect_avg_ms", float64(cc.ns.Load())/float64(max(cc.n.Load(), 1))/1e6)
-		p50s, maxs, warms, w2s, connects = append(p50s, ms(p50)), append(maxs, ms(mx)), append(warms, warmMs), append(w2s, ms(p50b)), append(connects, float64(c1))
+		p50s, maxs, warms, w2s = append(p50s, ms(p50)), append(maxs, ms(mx)), append(warms, warmMs), append(w2s, ms(p50b))
 		db.Close()
 		time.Sleep(pause)
 	}
@@ -848,7 +847,7 @@ func patPin(ctx context.Context, t target, tlsF, variant string, workers int, th
 	if adm != nil {
 		defer adm.Close()
 	}
-	stopOpen := func() int { return 0 }
+	var stopOpen func() int
 	{
 		var mx atomic.Int64
 		done, fin := make(chan struct{}), make(chan struct{})

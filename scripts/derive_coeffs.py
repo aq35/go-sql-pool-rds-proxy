@@ -6,7 +6,7 @@
 Each coefficient is derived only if its experiment has usable runs (status OK / no BASELINE_UNMET); otherwise it stays at
 the default and is listed as "not derived". The derivation rules are written next to each coefficient below.
 """
-import csv, json, pathlib, statistics, sys
+import csv, json, pathlib, statistics
 
 root = pathlib.Path(__file__).resolve().parent.parent
 res = root / "results"
