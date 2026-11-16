@@ -128,17 +128,3 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: scripts/check-no-sensitive.sh
-
-  dependency-review:
-    name: Dependency review (new vulnerable dependencies)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-        continue-on-error: true       # needs the repository's dependency graph; do not fail the PR if it is not enabled

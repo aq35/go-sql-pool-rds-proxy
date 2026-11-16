@@ -64,9 +64,10 @@ make push                           # lab/ だけ更新したいとき(再構築
 | Shell | `shellcheck`(警告以上) | 警告以上がある |
 | Infra | CDK の型検査、`npm audit` | high 以上で失敗(全レベルは要約に表示) |
 | No credentials | アクセスキー、秘密鍵、アカウント付きの ARN、エンドポイント名、プライベート IP | 見つかった |
-| Dependency review | PR で増えた脆弱な依存 | high 以上(リポジトリで依存グラフが有効なときだけ) |
 
-同じ内容は、手元で `make check` でも実行できる。依存の更新は Dependabot(週 1 回)が PR を作る。
+同じ内容は、手元で `make check` でも実行できる。
+
+**Dependency review(PR で増えた脆弱な依存の検査)は、まだ入れていない。** リポジトリの「Dependency graph」が無効だと、動かない(実際、動かなかった)。Settings → Code security で有効にしてから、`actions/dependency-review-action` のジョブを足す。依存の更新は Dependabot(週 1 回)が PR を作る。
 
 ## 結果の読み方で守ること
 
