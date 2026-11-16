@@ -1,0 +1,32 @@
+{
+ "name": "capacity-curve",
+ "question": "この Aurora スペック(vCPU)で、同時実行数をいくつまで増やすと処理量が頭打ちになるか(膝)。vCPU を倍にすると膝はどう動くか",
+ "hypothesis": "処理量(QPS)は同時数が vCPU の数倍(CPU 律速のクエリなら 1〜2 倍、点読み中心なら数倍)で頭打ちになり、それ以上は p99 だけが悪化する。4 vCPU では膝が約 2 倍になる。",
+ "reading": "summary.md の qps_knee(QPS が最大の 90% に達する最小の N)と p99_knee(p99 が最良の 2 倍以内の最大の N)を、MaxOpenConns の合計の目安にする。client_cpu が 70% を超えた水準は、負荷生成側が律速しているので使わない。Aurora の CPU が 100% 近くで QPS が横ばいなら、CPU 律速。",
+ "scenario": "capacity",
+ "common": [
+  "--duration=60m"
+ ],
+ "repeat": 2,
+ "observe_after_s": 60,
+ "runs": [
+  {
+   "id": "mixed",
+   "args": [
+    "--mix=mixed"
+   ]
+  },
+  {
+   "id": "cpu",
+   "args": [
+    "--mix=cpu"
+   ]
+  },
+  {
+   "id": "pk",
+   "args": [
+    "--mix=pk"
+   ]
+  }
+ ]
+}

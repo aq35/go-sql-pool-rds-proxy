@@ -1,0 +1,60 @@
+{
+ "name": "pat-pin",
+ "question": "どの Go / GORM の設定が、RDS Proxy のセッションをピン留めするか(interpolateParams=false、GORM PrepareStmt、DSN の time_zone と sql_mode、loc だけ、トランザクション内の待ち)",
+ "hypothesis": "interpolateParams=false(パラメータ付きクエリがサーバ側プリペアドになる)と、GORM の PrepareStmt=true は、ピン留めされる。DSN の time_zone / sql_mode は、接続の確立で SET が走るが、ピン留めされない可能性がある(先行調査では time_zone はピン留め 0)。loc だけは、SET がないのでピン留めされない。長いトランザクションは、ピン留めではなく、InTransaction と、接続の専有として現れる。",
+ "reading": "variant ごとに、Proxy の pinned max と intx max、com_stmt_prepare_delta を、base と比べる。DatabaseConnections は、前の run の残りを含むので読まない(この実験は、待ち時間を省いている)。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=pin-patterns",
+  "--conns=10",
+  "--think=50ms",
+  "--duration=200s"
+ ],
+ "repeat": 2,
+ "floor": 100,
+ "observe_after_s": 60,
+ "runs": [
+  {
+   "id": "base",
+   "args": [
+    "--variant=base"
+   ]
+  },
+  {
+   "id": "prep-false",
+   "args": [
+    "--variant=prep-false"
+   ]
+  },
+  {
+   "id": "gorm-prepare",
+   "args": [
+    "--variant=gorm-prepare"
+   ]
+  },
+  {
+   "id": "set-tz",
+   "args": [
+    "--variant=set-tz"
+   ]
+  },
+  {
+   "id": "set-sqlmode",
+   "args": [
+    "--variant=set-sqlmode"
+   ]
+  },
+  {
+   "id": "loc-only",
+   "args": [
+    "--variant=loc-only"
+   ]
+  },
+  {
+   "id": "long-tx",
+   "args": [
+    "--variant=long-tx"
+   ]
+  }
+ ]
+}

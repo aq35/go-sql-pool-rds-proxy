@@ -1,0 +1,48 @@
+{
+ "name": "pat-warmup",
+ "question": "新しいプールに 32 同時のクエリが来るとき、事前に PingContext を並列で流して接続を作っておくと、最初の波の遅延はどれだけ縮むか(TLS、別 AZ)",
+ "hypothesis": "事前に温めない場合、最初の波は、接続の確立(TCP + TLS + ログイン)の分だけ遅く、温めた場合は 2 回目の波と同じ遅延になる。差は、接続 1 本の確立時間(約 20〜30 ms)の数倍までになる。",
+ "reading": "run(cold と warm)ごとに、summary の w1_p50_ms_med、w1_max_ms_med を比べる(10 回の試行の中央値、さらに 3 回の繰り返しの範囲)。warm_ms_med は、温めるのにかかった時間(起動時に払うコスト)。w2_p50_ms_med は、温まった後の基準値。 cold-pk / warm-pk は、SELECT 1 ではなく、主キー検索(cap_items)。本当のコールドスタート(Proxy→Aurora も冷えた状態)は、別の実験 pat-warmup-proxycold。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=warmup",
+  "--conns=32",
+  "--trials=10",
+  "--pause=15s",
+  "--tls=skip-verify",
+  "--proxy-az=cross",
+  "--duration=15m"
+ ],
+ "repeat": 3,
+ "floor": 100,
+ "observe_after_s": 20,
+ "needs_net_env": true,
+ "runs": [
+  {
+   "id": "cold",
+   "args": [
+    "--warm=false"
+   ]
+  },
+  {
+   "id": "warm",
+   "args": [
+    "--warm=true"
+   ]
+  },
+  {
+   "id": "cold-pk",
+   "args": [
+    "--warm=false",
+    "--query=pk"
+   ]
+  },
+  {
+   "id": "warm-pk",
+   "args": [
+    "--warm=true",
+    "--query=pk"
+   ]
+  }
+ ]
+}

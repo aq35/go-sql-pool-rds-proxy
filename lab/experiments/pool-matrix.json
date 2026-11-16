@@ -1,0 +1,120 @@
+{
+ "name": "pool-matrix",
+ "question": "どのクライアント設定(ロックの取り方、lifetime、idle time、プール数、プールの閉じ忘れ)が接続数を増やすか",
+ "hypothesis": "GET_LOCK を Proxy 経由でプールに戻す設定と、古いプールを閉じない設定が接続数を増やす。",
+ "reading": "plain を対照に、run ごとに dbconn / pinned の最大値と、終了後の減衰を比べる。",
+ "scenario": "pool-load",
+ "common": [
+  "--duration=10m",
+  "--workers-per-pool=24"
+ ],
+ "repeat": 1,
+ "observe_after_s": 300,
+ "runs": [
+  {
+   "id": "plain",
+   "args": [
+    "--lock-mode=none"
+   ]
+  },
+  {
+   "id": "base-pool",
+   "args": [
+    "--lock-mode=pool"
+   ]
+  },
+  {
+   "id": "prepared-only",
+   "args": [
+    "--lock-mode=none",
+    "--interpolate=false"
+   ]
+  },
+  {
+   "id": "lock-release",
+   "args": [
+    "--lock-mode=release"
+   ]
+  },
+  {
+   "id": "lock-badconn",
+   "args": [
+    "--lock-mode=pool",
+    "--bad-conn"
+   ]
+  },
+  {
+   "id": "lock-direct",
+   "args": [
+    "--lock-mode=direct"
+   ]
+  },
+  {
+   "id": "lock-table",
+   "args": [
+    "--lock-mode=table"
+   ]
+  },
+  {
+   "id": "idle30",
+   "args": [
+    "--lock-mode=pool",
+    "--idle-time=30s"
+   ]
+  },
+  {
+   "id": "lifetime30s",
+   "args": [
+    "--lock-mode=pool",
+    "--lifetime=30s"
+   ]
+  },
+  {
+   "id": "lifetime15m",
+   "args": [
+    "--lock-mode=pool",
+    "--lifetime=15m"
+   ]
+  },
+  {
+   "id": "open-low",
+   "args": [
+    "--lock-mode=pool",
+    "--total-conns=4"
+   ]
+  },
+  {
+   "id": "open-high",
+   "args": [
+    "--lock-mode=pool",
+    "--total-conns=40"
+   ]
+  },
+  {
+   "id": "leak",
+   "args": [
+    "--lock-mode=none",
+    "--lifetime=0",
+    "--rotate-every=1m"
+   ]
+  },
+  {
+   "id": "closeold",
+   "args": [
+    "--lock-mode=none",
+    "--lifetime=0",
+    "--rotate-every=1m",
+    "--close-old"
+   ]
+  },
+  {
+   "id": "all-fixed",
+   "args": [
+    "--lock-mode=direct",
+    "--idle-time=30s",
+    "--close-old",
+    "--lifetime=15m"
+   ]
+  }
+ ]
+}

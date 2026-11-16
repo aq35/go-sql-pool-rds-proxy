@@ -1,0 +1,10 @@
+{
+  "_comment": "Pass/fail criteria and thresholds, one place. summarize.py turns them into a Status flag per run (so nobody has to read time series).",
+  "cpu_danger_pct": 85,
+  "client_cpu_bound_pct": 70,
+  "pin_saturation_ratio": 0.8,
+  "p99_spike_factor": 2.0,
+  "wait_count_max": 0,
+  "error_count_max": 0,
+  "borrow_latency_max_us": 1000000
+}

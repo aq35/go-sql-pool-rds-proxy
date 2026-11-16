@@ -1,0 +1,91 @@
+{
+ "name": "pat-pin",
+ "question": "どの Go / GORM の設定が、RDS Proxy のセッションをピン留めするか(interpolateParams=false、GORM PrepareStmt、DSN の time_zone と sql_mode、loc だけ、トランザクション内の待ち)",
+ "hypothesis": "interpolateParams=false(パラメータ付きクエリがサーバ側プリペアドになる)と、GORM の PrepareStmt=true は、ピン留めされる。DSN の time_zone / sql_mode は、接続の確立で SET が走るが、ピン留めされない可能性がある(先行調査では time_zone はピン留め 0)。loc だけは、SET がないのでピン留めされない。長いトランザクションは、ピン留めではなく、InTransaction と、接続の専有として現れる。 DSN で接続ごとに送る `SET` のうち、サーバーが追跡できない変数(sql_select_limit、ユーザー変数、autocommit=0 など)は、ピン留めされる可能性がある。",
+ "reading": "variant ごとに、Proxy の pinned max と intx max、com_stmt_prepare_delta を、base と比べる。DatabaseConnections は、前の run の残りを含むので読まない(この実験は、待ち時間を省いている)。 session_time_zone は、サーバーのセッションが実際に使っている time_zone(loc だけの run で変わらないこと、set-tz の run で +09:00 になることを確認する)。 go_open_max は Go 側が数えた接続数(Proxy の ClientConnections は実数より少なく出るため、ピン留めの数は、これと比べて読む)。run の間は 130 秒空けてあり、CloudWatch の 1 分値が前後の run と混ざらない。set-* は、DSN の param として、接続のたびに `SET k=v` が走る。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=pin-patterns",
+  "--conns=10",
+  "--think=50ms",
+  "--duration=200s"
+ ],
+ "repeat": 2,
+ "floor": 100,
+ "observe_after_s": 60,
+ "runs": [
+  {
+   "id": "base",
+   "args": [
+    "--variant=base"
+   ]
+  },
+  {
+   "id": "prep-false",
+   "args": [
+    "--variant=prep-false"
+   ]
+  },
+  {
+   "id": "gorm-prepare",
+   "args": [
+    "--variant=gorm-prepare"
+   ]
+  },
+  {
+   "id": "set-tz",
+   "args": [
+    "--variant=set-tz"
+   ]
+  },
+  {
+   "id": "set-sqlmode",
+   "args": [
+    "--variant=set-sqlmode"
+   ]
+  },
+  {
+   "id": "set-select-limit",
+   "args": [
+    "--variant=set-select-limit"
+   ]
+  },
+  {
+   "id": "set-user-var",
+   "args": [
+    "--variant=set-user-var"
+   ]
+  },
+  {
+   "id": "set-wait-timeout",
+   "args": [
+    "--variant=set-wait-timeout"
+   ]
+  },
+  {
+   "id": "set-max-exec-time",
+   "args": [
+    "--variant=set-max-exec-time"
+   ]
+  },
+  {
+   "id": "set-autocommit-off",
+   "args": [
+    "--variant=set-autocommit-off"
+   ]
+  },
+  {
+   "id": "loc-only",
+   "args": [
+    "--variant=loc-only"
+   ]
+  },
+  {
+   "id": "long-tx",
+   "args": [
+    "--variant=long-tx"
+   ]
+  }
+ ],
+ "pre_gap_s": 130
+}

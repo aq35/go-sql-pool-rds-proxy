@@ -1,0 +1,20 @@
+node_modules
+cdk.out
+dist
+*.js
+!jest.config.js
+lab/lab
+lab/go.sum.bak
+.venv
+lab/out
+lab/net.env
+infra/cdk.out
+lab/VERSION
+
+# generated: contains the AWS account id
+infra/cdk.context.json
+results/exp-*/
+# raw per-run data (client.log contains the endpoint host names): keep summaries only
+results/*__*/*.r*/
+results/*__*/status.json
+results/*__*/expected.json

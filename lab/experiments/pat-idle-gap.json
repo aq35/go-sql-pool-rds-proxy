@@ -1,0 +1,77 @@
+{
+ "name": "pat-idle-gap",
+ "question": "Proxy の IdleClientTimeout(60 秒)を、クエリの間隔が超えたとき、Go はどうなるか(エラーか、透過的な再接続か)。ConnMaxIdleTime を 45 秒にすると、どう変わるか。再接続は、1 クエリあたり何本か",
+ "hypothesis": "間隔が 55 秒以下なら、Proxy は切らないので、新規接続はほぼ 0。間隔が 65 秒以上なら、Proxy が接続を切り、Go は透過的に再接続する(エラー 0、新規接続は 1 クエリにつき約 1 本、遅延は増える)。ConnMaxIdleTime=45 秒だと、間隔が 55 秒以上のとき、Go が先に閉じるので、同じく 1 クエリにつき約 1 本の再接続になる。",
+ "reading": "gap と idle_time ごとに、new_conn_per_query、errors、p50 / p99、slow_queries を読む。new_conn_per_query が約 1 なら、毎回再接続。エラーが 0 でも new_conn_per_query が約 1 なら、透過的な再接続が起きている(前回の lifecycle-sync で説明できなかった点の確認)。Proxy の IdleClientTimeout は、この実験の間だけ 60 秒に変える(終わると元に戻す)。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=idle-gap",
+  "--conns=6",
+  "--tls=skip-verify",
+  "--duration=8m"
+ ],
+ "repeat": 2,
+ "floor": 100,
+ "observe_after_s": 30,
+ "proxy": {
+  "IdleClientTimeout": 60
+ },
+ "runs": [
+  {
+   "id": "gap30s-idle0",
+   "args": [
+    "--gap=30s",
+    "--idle-time=0"
+   ]
+  },
+  {
+   "id": "gap55s-idle0",
+   "args": [
+    "--gap=55s",
+    "--idle-time=0"
+   ]
+  },
+  {
+   "id": "gap65s-idle0",
+   "args": [
+    "--gap=65s",
+    "--idle-time=0"
+   ]
+  },
+  {
+   "id": "gap90s-idle0",
+   "args": [
+    "--gap=90s",
+    "--idle-time=0"
+   ]
+  },
+  {
+   "id": "gap30s-idle45s",
+   "args": [
+    "--gap=30s",
+    "--idle-time=45s"
+   ]
+  },
+  {
+   "id": "gap55s-idle45s",
+   "args": [
+    "--gap=55s",
+    "--idle-time=45s"
+   ]
+  },
+  {
+   "id": "gap65s-idle45s",
+   "args": [
+    "--gap=65s",
+    "--idle-time=45s"
+   ]
+  },
+  {
+   "id": "gap90s-idle45s",
+   "args": [
+    "--gap=90s",
+    "--idle-time=45s"
+   ]
+  }
+ ]
+}

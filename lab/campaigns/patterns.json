@@ -1,0 +1,31 @@
+{
+ "name": "patterns",
+ "description": "番外編と応用編: GORM のプール下限、ウォームアップ、直列と並列、タイムアウトの連鎖、ピン留めの原因、一斉寿命、アイドルタイムアウト。2 vCPU(r6g.large)。約 7 時間",
+ "steps": [
+  {
+   "aurora_class": "db.r6g.large"
+  },
+  {
+   "exp": "pat-gorm-pool"
+  },
+  {
+   "exp": "pat-warmup"
+  },
+  {
+   "exp": "pat-stampede"
+  },
+  {
+   "exp": "pat-pin"
+  },
+  {
+   "exp": "pat-timeout"
+  },
+  {
+   "exp": "pat-serial-parallel"
+  },
+  {
+   "exp": "lifecycle-sync",
+   "repeat": 1
+  }
+ ]
+}

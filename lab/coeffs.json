@@ -1,0 +1,13 @@
+{
+ "k": {
+  "value": 2.0,
+  "source": "measured: min over 4 (class,mix) of qps_knee/vCPU; limiting: capacity-curve__db.r6g.large cpu",
+  "meaning": "同時数の膝 / vCPU",
+  "values": [
+   16.0,
+   2.0,
+   16.0,
+   2.0
+  ]
+ }
+}

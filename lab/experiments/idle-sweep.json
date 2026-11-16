@@ -1,0 +1,62 @@
+{
+ "name": "idle-sweep",
+ "question": "MaxIdleConns を変えると、Proxy→Aurora の接続数(DatabaseConnections)は変わるか",
+ "hypothesis": "変わらない。MaxIdleConns が決めるのはクライアント→Proxy の接続数で、Proxy→Aurora は同時に実行中のクエリ数で決まる。",
+ "reading": "run id ごとに、繰り返し(r1..r3)の中央値と範囲を比べる。範囲が重なれば差なし。baseline.unmet のある run は除外して読む。client_max は MaxIdleConns とともに増えるはず。",
+ "scenario": "pool-load",
+ "common": [
+  "--duration=8m",
+  "--lock-mode=none",
+  "--total-conns=30",
+  "--workers-per-pool=10",
+  "--hold=50ms",
+  "--query-every=100ms",
+  "--lifetime=0"
+ ],
+ "repeat": 3,
+ "observe_after_s": 120,
+ "runs": [
+  {
+   "id": "idle0",
+   "args": [
+    "--max-idle=0"
+   ]
+  },
+  {
+   "id": "idle1",
+   "args": [
+    "--max-idle=1"
+   ]
+  },
+  {
+   "id": "idle2",
+   "args": [
+    "--max-idle=2"
+   ]
+  },
+  {
+   "id": "idle3",
+   "args": [
+    "--max-idle=3"
+   ]
+  },
+  {
+   "id": "idle4",
+   "args": [
+    "--max-idle=4"
+   ]
+  },
+  {
+   "id": "idle5",
+   "args": [
+    "--max-idle=5"
+   ]
+  },
+  {
+   "id": "idle10",
+   "args": [
+    "--max-idle=10"
+   ]
+  }
+ ]
+}

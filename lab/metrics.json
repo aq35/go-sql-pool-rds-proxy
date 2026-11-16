@@ -1,0 +1,100 @@
+{
+  "_comment": "One place for which CloudWatch metrics are collected and with which statistic. Gauges use Maximum; counters use Sum. Namespace AWS/RDS, dimension ProxyName. instance_metrics are AWS/RDS with dimension DBInstanceIdentifier=$WRITER_INSTANCE_ID. cluster_metrics are AWS/RDS with dimension DBClusterIdentifier=$DB_CLUSTER_ID (billed Aurora I/O, Sum over the window).",
+  "proxy_name": "rdsproxy-exp",
+  "metrics": [
+    {
+      "key": "client",
+      "name": "ClientConnections",
+      "stat": "Maximum"
+    },
+    {
+      "key": "dbconn",
+      "name": "DatabaseConnections",
+      "stat": "Maximum"
+    },
+    {
+      "key": "pinned",
+      "name": "DatabaseConnectionsCurrentlySessionPinned",
+      "stat": "Maximum"
+    },
+    {
+      "key": "borrowed",
+      "name": "DatabaseConnectionsCurrentlyBorrowed",
+      "stat": "Maximum"
+    },
+    {
+      "key": "intx",
+      "name": "DatabaseConnectionsCurrentlyInTransaction",
+      "stat": "Maximum"
+    },
+    {
+      "key": "allowed",
+      "name": "MaxDatabaseConnectionsAllowed",
+      "stat": "Maximum"
+    },
+    {
+      "key": "created",
+      "name": "DatabaseConnectionsSetupSucceeded",
+      "stat": "Sum"
+    },
+    {
+      "key": "dbfailed",
+      "name": "DatabaseConnectionsSetupFailed",
+      "stat": "Sum"
+    },
+    {
+      "key": "authfail",
+      "name": "ClientConnectionsSetupFailedAuth",
+      "stat": "Sum"
+    },
+    {
+      "key": "borrowlat",
+      "name": "DatabaseConnectionsBorrowLatency",
+      "stat": "Maximum"
+    }
+  ],
+  "instance_metrics": [
+    {
+      "key": "cpu",
+      "name": "CPUUtilization",
+      "stat": "Maximum"
+    },
+    {
+      "key": "cpu_avg",
+      "name": "CPUUtilization",
+      "stat": "Average"
+    },
+    {
+      "key": "aurora_conn",
+      "name": "DatabaseConnections",
+      "stat": "Maximum"
+    },
+    {
+      "key": "read_iops",
+      "name": "ReadIOPS",
+      "stat": "Average"
+    },
+    {
+      "key": "write_iops",
+      "name": "WriteIOPS",
+      "stat": "Average"
+    },
+    {
+      "key": "commit_lat",
+      "name": "CommitLatency",
+      "stat": "Average"
+    }
+  ],
+  "cluster_metrics": [
+    {
+      "key": "vol_read_ios",
+      "name": "VolumeReadIOPs",
+      "stat": "Sum"
+    },
+    {
+      "key": "vol_write_ios",
+      "name": "VolumeWriteIOPs",
+      "stat": "Sum"
+    }
+  ]
+}

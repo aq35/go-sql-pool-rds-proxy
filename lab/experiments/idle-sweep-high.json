@@ -1,0 +1,44 @@
+{
+ "name": "idle-sweep-high",
+ "question": "同時実行数が多い(60 接続)場合でも、MaxIdleConns は Proxy→Aurora の接続数に影響しないか",
+ "hypothesis": "影響しない。閉じられる接続数(max_idle_closed)だけが変わる。",
+ "reading": "idle-sweep と同じ。max_idle_closed と hold_avg_ms も並べて見る。",
+ "scenario": "pool-load",
+ "common": [
+  "--duration=8m",
+  "--lock-mode=none",
+  "--total-conns=60",
+  "--workers-per-pool=20",
+  "--hold=50ms",
+  "--query-every=100ms",
+  "--lifetime=0"
+ ],
+ "repeat": 3,
+ "observe_after_s": 120,
+ "runs": [
+  {
+   "id": "idle0",
+   "args": [
+    "--max-idle=0"
+   ]
+  },
+  {
+   "id": "idle5",
+   "args": [
+    "--max-idle=5"
+   ]
+  },
+  {
+   "id": "idle10",
+   "args": [
+    "--max-idle=10"
+   ]
+  },
+  {
+   "id": "idle20",
+   "args": [
+    "--max-idle=20"
+   ]
+  }
+ ]
+}
