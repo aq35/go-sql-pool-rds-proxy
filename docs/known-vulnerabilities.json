@@ -1,0 +1,8 @@
+[
+  {
+    "id": "GO-2026-5970",
+    "module": "golang.org/x/text",
+    "expires": "2026-12-31",
+    "reason": "Infinite loop on invalid input; fixed in x/text v0.39.0, which needs Go 1.25. Reachable only through gorm's schema naming (static struct/column names). Upgrade is blocked on confirming the Go version of the EC2 build host. See docs/known-vulnerabilities.md"
+  }
+]

@@ -201,5 +201,6 @@ Proxy の IdleClientTimeout を 60 秒にし、各ワーカーが約 60 秒お�
 | P1 `patterns_summary` の無効データ | 有効な run だけを集計し、無効な run は別に一覧 | 実装済み |
 | P1 メトリクス欠損のチェック | 実験ごとの `required_metrics` で検証 | 実装済み |
 | P1 キャンペーンの状態 | `done_with_failures` をキャンペーンにも伝え、`finish.py` が失敗を報告する | 実装済み |
+| P1 govulncheck が exit 2 でも CI が成功する | 許可リスト方式のブロッキングに変更(許可項目に期限。許可していても毎回表示)。脆弱性 ID、到達可能性、修正版、EC2 の Go、アップグレード手順を `docs/known-vulnerabilities.md` に記載。`go_version` を run の `meta.json` に記録 | 実装済み。**脆弱性そのものは未修正**(EC2 の Go が 1.25 以上か未確認のため) |
 
 **未検証が多い理由**: AWS のスタックは、レビューの前に削除を始めていた。新しい実装は、`make check` と、ローカルの MySQL での一部の確認(`idle-gap` の `dedicated` の動作は未確認)だけで、AWS での実行は、まだ行っていない。

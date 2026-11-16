@@ -15,8 +15,12 @@ concurrency:
 
 jobs:
   go:
-    name: Go (fmt, vet, lint, test, build)
+    name: Go ${{ matrix.go }} (fmt, vet, lint, test, build)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.22", stable]        # the go.mod minimum, and the latest (the lab is built on EC2 with the distribution's Go)
     defaults:
       run:
         working-directory: lab
@@ -24,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: lab/go.mod
+          go-version: ${{ matrix.go }}
           cache-dependency-path: lab/go.sum
       - name: gofmt
         run: |
@@ -33,6 +37,7 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: golangci-lint
+        if: matrix.go == 'stable'
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.63.4
@@ -47,7 +52,7 @@ jobs:
           python3 -I exp.py check
 
   govulncheck:
-    name: Go vulnerabilities (govulncheck)
+    name: Go vulnerabilities (govulncheck gate)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -56,20 +61,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable          # latest patch release: standard-library findings in old toolchains disappear
+          go-version: stable          # latest patch release: standard-library findings of old toolchains disappear
           cache-dependency-path: lab/go.sum
-      - name: govulncheck
-        # Reported, not blocking: the known finding (golang.org/x/text, GO-2026-5970) is fixed only in a version that requires
-        # Go 1.25, but the lab binary is built on an isolated EC2 instance with the distribution's Go (no toolchain download).
-        # Raise the `go` line in lab/go.mod and the instance's Go together, then make this check blocking.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+      - name: text report (always shown)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-          set +e
-          govulncheck ./... > vuln.txt 2>&1
-          code=$?
-          set -e
+          govulncheck ./... > vuln.txt || true
           { echo "### govulncheck"; echo '```'; tail -40 vuln.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$code" -ne 0 ]; then echo "::warning title=govulncheck::vulnerabilities reported (exit $code); see the job summary"; fi
+      - name: gate (blocking)
+        # Fails on any CALLED vulnerability that is not in docs/known-vulnerabilities.json, or whose entry has expired.
+        # The known finding, its reachability, the EC2 Go version and the upgrade plan: docs/known-vulnerabilities.md
+        run: |
+          govulncheck -json ./... > vuln.json
+          python3 ../scripts/vuln_gate.py vuln.json ../docs/known-vulnerabilities.json
 
   python:
     name: Python (lint, tests)
@@ -88,6 +95,7 @@ jobs:
         working-directory: lab
         run: |
           python test_rules.py
+          python ../scripts/test_vuln_gate.py
           python -m unittest -v test_exp 2>&1 | tee ../unittest.txt
           { echo "### python unit tests"; echo '```'; tail -5 ../unittest.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 

@@ -321,7 +321,8 @@ def _run_experiment(exp, repeat=0, only=None):
             time.sleep(e.get("observe_after_s", 120))
             collect(rdir, start - dt.timedelta(minutes=3), now())
             floor = e.get("floor", FLOOR_DEFAULT)
-            meta = {"experiment": a.exp, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version, "binary_sha256": binary_sha,
+            go_ver = subprocess.run(["go", "version"], capture_output=True, text=True).stdout.strip() or "unknown"
+            meta = {"experiment": a.exp, "go_version": go_ver, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version, "binary_sha256": binary_sha,
                     "manifest": mf, "start": iso(start), "run_end": iso(run_end), "rc": rc, "baseline": base,
                     # floor >= 50: the Proxy was NOT waited down to its idle floor, so Proxy->Aurora connections may be left over from the previous run
                     "condition": "warm-proxy (previous connections may remain)" if floor >= 50 else "settled (Proxy connections at the floor)"}

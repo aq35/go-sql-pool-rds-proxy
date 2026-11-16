@@ -59,7 +59,7 @@ make push                           # lab/ だけ更新したいとき(再構築
 | チェック | 内容 | 落ちる条件 |
 |---|---|---|
 | Go | `gofmt`、`go vet`、`golangci-lint`、`go test -race`(カバレッジ)、ビルド、実験定義の検証 | いずれかが失敗 |
-| Go vulnerabilities | `govulncheck`(最新の Go で) | **報告のみ**(警告)。既知: `golang.org/x/text` は、修正版が Go 1.25 を要求し、EC2 の Go が対応しているか未確認のため、上げていない |
+| Go vulnerabilities | `govulncheck`(最新の Go で)。**許可リストにない、呼ばれている脆弱性があれば失敗**。許可項目には期限がある | 新しい脆弱性、または期限切れ。既知の 1 件(`golang.org/x/text`)は [docs/known-vulnerabilities.md](docs/known-vulnerabilities.md) に、到達可能性・EC2 の Go・アップグレード手順を記載 |
 | Python | `ruff`(構文、未定義・未使用)、コンパイル、単体テスト | いずれかが失敗 |
 | Shell | `shellcheck`(警告以上) | 警告以上がある |
 | Infra | CDK の型検査、`npm audit` | high 以上で失敗(全レベルは要約に表示) |
