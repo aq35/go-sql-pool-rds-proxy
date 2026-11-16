@@ -30,7 +30,7 @@ check:
 	scripts/check-no-sensitive.sh
 	python3 -I -m py_compile lab/exp.py lab/rules.py scripts/summarize.py scripts/finish.py scripts/derive_coeffs.py scripts/gen_validation.py; rm -rf lab/__pycache__ scripts/__pycache__
 	cd infra && (test -d node_modules || npm ci --silent) && npx tsc --noEmit -p .
-	@echo "check OK (cdk synth needs AWS credentials: cd infra && npx cdk synth --quiet)"
+	@echo "check OK (cdk synth: cd infra && npx cdk synth --quiet)"
 
 deploy:
 	git rev-parse --short HEAD > lab/VERSION

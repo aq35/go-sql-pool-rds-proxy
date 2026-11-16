@@ -15,20 +15,16 @@ concurrency:
 
 jobs:
   go:
-    name: Go ${{ matrix.go }} (fmt, vet, lint, test, build)
+    name: Go (fmt, vet, lint, test, build)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ["1.22", stable]        # the go.mod minimum, and the latest (the lab is built on EC2 with the distribution's Go)
     defaults:
       run:
         working-directory: lab
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go }}
+          go-version-file: lab/go.mod       # the version the lab is built with (EC2 fetches the same toolchain: GOTOOLCHAIN=auto)
           cache-dependency-path: lab/go.sum
       - name: gofmt
         run: |
@@ -37,11 +33,9 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: golangci-lint
-        # v1.63.4 was built with Go 1.23 and cannot read the export data of newer standard libraries (fails on Go 1.27)
-        if: matrix.go == '1.22'
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.63.4
+          version: v2.15.0
           working-directory: lab
       - name: go test (race, coverage)
         run: |
@@ -51,6 +45,8 @@ jobs:
         run: |
           go build -o lab .
           python3 -I exp.py check
+      - name: cross-compile for the EC2 client (linux/arm64)
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/lab-linux-arm64 .
 
   govulncheck:
     name: Go vulnerabilities (govulncheck gate)
@@ -59,18 +55,15 @@ jobs:
       run:
         working-directory: lab
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          # NOT `stable`: govulncheck v1.1.4 crashes on the newest toolchains (panic: unexpected expr: *ast.KeyValueExpr).
-          # 1.25 is the series the EC2 build host is expected to have (docs/known-vulnerabilities.md §3); the latest patch of
-          # it has the standard-library fixes, so only module findings remain.
-          go-version: "1.25"
+          go-version-file: lab/go.mod
           cache-dependency-path: lab/go.sum
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
       - name: text report (always shown)
         # govulncheck exits 0 = nothing, 3 = vulnerabilities found. Anything else (e.g. 2) is the TOOL failing: that must fail the job.
         run: |
@@ -81,9 +74,8 @@ jobs:
           { echo "### govulncheck (exit $code)"; echo '```'; tail -40 vuln.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then echo "::error title=govulncheck::the tool failed (exit $code), so nothing was scanned"; exit 1; fi
       - name: gate (blocking)
-        # Fails on any CALLED vulnerability that is not in docs/known-vulnerabilities.json, or whose entry has expired,
-        # and on input that shows the tool did not run. The known finding, its reachability, the EC2 Go version and the
-        # upgrade plan: docs/known-vulnerabilities.md
+        # Fails on any CALLED vulnerability that is not in docs/known-vulnerabilities.json (empty today), or whose entry has
+        # expired, and on input that shows the tool did not run. See docs/known-vulnerabilities.md
         run: |
           govulncheck -json ./... > vuln.json
           python3 ../scripts/vuln_gate.py vuln.json ../docs/known-vulnerabilities.json
@@ -92,11 +84,11 @@ jobs:
     name: Python (lint, tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install ruff==0.8.6
+      - run: pip install ruff==0.17.5
       - name: ruff (syntax errors, undefined / unused names)
         run: ruff check lab/*.py scripts/*.py --select E9,F
       - name: compile
@@ -113,26 +105,28 @@ jobs:
     name: Shell (shellcheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: shellcheck -S warning lab/*.sh scripts/*.sh
 
   infra:
-    name: Infra (CDK type-check, npm audit)
+    name: Infra (CDK type-check, synth, npm audit)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: infra
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: infra/package-lock.json
       - run: npm ci
       - name: tsc
         run: npx tsc --noEmit -p .
+      - name: cdk synth (template only; no AWS credentials or account needed)
+        run: npx cdk synth --quiet
       - name: npm audit (blocking at high / critical)
         run: npm audit --audit-level=high
       - name: npm audit (all severities, report only)
@@ -144,5 +138,5 @@ jobs:
     name: No credentials / account ids / endpoints
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: scripts/check-no-sensitive.sh

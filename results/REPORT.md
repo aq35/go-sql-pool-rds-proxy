@@ -10,6 +10,7 @@
 - 遅延を読む実験は、run の間の「接続数が下限に戻るまでの待ち」を省いた。そのため、**Proxy の `DatabaseConnections` は読まない**(前の run の残りを含む)。
 - `ClientConnections` は、実ソケット数より少なく出る(10 本で 5〜8)。ピン留めの数が、見かけ上、クライアント数に近くなる。**原因の有力な候補(未検証)**: この実験は、接続数のゲージをすべて `Maximum` で取っていた。AWS のドキュメントは、これらのゲージの推奨統計を **`Sum`** とし、「proxy は複数のインスタンスで提供されることがあり、指標はインスタンスごとに出る」と書いている(`docs/metrics.md`)。`Maximum` は、最も大きい 1 インスタンスの値しか見ない。**そうなら、`DatabaseConnections`、ピン留めの数、`InTransaction` も、実際より少なく出ている可能性がある。** 次の実行では、`Maximum` と `Sum` を同じ run で並べて取り、Go 側の `OpenConnections` と照合する。それまでは、この文書の Proxy の接続数の値は、**下限(少なくともこれだけ)として読む**。
 - 先行調査(実験 0、A、B、D)は別リポジトリでの結果で、ここには含めない。
+- **版の注意**: この文書の結果は、**MySQL ドライバ v1.8.1、gorm v1.25.12、EC2 の `dnf` の Go(版は未記録)**で測った。コードは、その後、**Go 1.27.4、ドライバ v1.10.1、gorm v1.31.2** に更新した(`docs/known-vulnerabilities.md` §4)。以後の run は、`meta.json` の `go_version` / `go_deps` に版が残る。更新前後の結果は、傾向としてのみ比べる。
 
 ## 1. 計画の実験と、実施状況
 
@@ -202,5 +203,6 @@ Proxy の IdleClientTimeout を 60 秒にし、各ワーカーが約 60 秒お�
 | P1 メトリクス欠損のチェック | 実験ごとの `required_metrics` で検証 | 実装済み |
 | P1 キャンペーンの状態 | `done_with_failures` をキャンペーンにも伝え、`finish.py` が失敗を報告する | 実装済み |
 | P1 govulncheck が exit 2 でも CI が成功する | 許可リスト方式のブロッキングに変更(許可項目に期限。許可していても毎回表示)。脆弱性 ID、到達可能性、修正版、EC2 の Go、アップグレード手順を `docs/known-vulnerabilities.md` に記載。`go_version` を run の `meta.json` に記録 | 実装済み。**脆弱性そのものは未修正**(EC2 の Go が 1.25 以上か未確認のため)。**訂正**: 最初の CI の「exit 2」は脆弱性の検出ではなく、`govulncheck` のクラッシュ(検出は exit 3)だった。クラッシュは失敗扱いにし、スキャンの Go を 1.25 に固定した |
+| 「最新にする」(Go、依存、CI の道具) | Go 1.27.4、依存(ドライバ v1.10.1、gorm v1.31.2、`x/text` v0.44.0 など)、`golangci-lint` v2.15.0、`govulncheck` v1.9.0、Actions、`aws-cdk-lib` 2.277.0 を更新。`govulncheck` は「脆弱性なし」(ローカル)。許可リストは空 | ローカルで `make check`、`cdk synth` を確認。**EC2 でのビルド(ツールチェーンの自動取得)は未検証**。TypeScript は 5.9.3(TypeScript 7 は `ts-node` が未対応) |
 
 **未検証が多い理由**: AWS のスタックは、レビューの前に削除を始めていた。新しい実装は、`make check` と、ローカルの MySQL での一部の確認(`idle-gap` の `dedicated` の動作は未確認)だけで、AWS での実行は、まだ行っていない。

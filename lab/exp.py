@@ -210,6 +210,19 @@ def cmd_run(a):
     run_experiment(a.exp, a.repeat, a.only.split(",") if a.only else None)
 
 
+def build_info():
+    """What the running `lab` binary was built with: the Go toolchain and the dependency versions (e.g. the MySQL driver). A different
+    driver or Go version can change connection handling, so results must say which one they came from."""
+    r = subprocess.run(["go", "version", "-m", str(HERE / "lab")], capture_output=True, text=True, cwd=HERE)
+    lines = r.stdout.splitlines()
+    go = lines[0].split(":", 1)[-1].strip() if lines else "unknown"           # "<path>: go1.27.4"
+    deps = {}
+    for ln in lines[1:]:
+        f = ln.split()
+        if len(f) >= 3 and f[0] == "dep": deps[f[1]] = f[2]
+    return go, deps
+
+
 def sha256_file(p):
     try: return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
     except OSError: return None
@@ -321,8 +334,8 @@ def _run_experiment(exp, repeat=0, only=None):
             time.sleep(e.get("observe_after_s", 120))
             collect(rdir, start - dt.timedelta(minutes=3), now())
             floor = e.get("floor", FLOOR_DEFAULT)
-            go_ver = subprocess.run(["go", "version"], capture_output=True, text=True).stdout.strip() or "unknown"
-            meta = {"experiment": a.exp, "go_version": go_ver, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version, "binary_sha256": binary_sha,
+            go_ver, deps = build_info()
+            meta = {"experiment": a.exp, "go_version": go_ver, "go_deps": deps, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version, "binary_sha256": binary_sha,
                     "manifest": mf, "start": iso(start), "run_end": iso(run_end), "rc": rc, "baseline": base,
                     # floor >= 50: the Proxy was NOT waited down to its idle floor, so Proxy->Aurora connections may be left over from the previous run
                     "condition": "warm-proxy (previous connections may remain)" if floor >= 50 else "settled (Proxy connections at the floor)"}

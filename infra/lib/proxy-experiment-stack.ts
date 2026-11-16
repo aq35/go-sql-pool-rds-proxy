@@ -174,13 +174,14 @@ export class ProxyExperimentStack extends cdk.Stack {
       'ADMIN_PW=$(aws secretsmanager get-secret-value --secret-id $SECRET_ARN --query SecretString --output text | jq -r .password)',
       'APP_PW=$(aws secretsmanager get-secret-value --secret-id $APP_SECRET_ARN --query SecretString --output text | jq -r .password)',
       'created=false; for i in $(seq 1 30); do mysql -h $CLUSTER_ENDPOINT -u admin -p"$ADMIN_PW" -e "CREATE USER IF NOT EXISTS \'appuser\'@\'%\' IDENTIFIED BY \'$APP_PW\'; GRANT ALL ON ${DB_NAME}.* TO \'appuser\'@\'%\';" && { created=true; break; }; sleep 10; done; "$created"',
-      // fetch + build the Go client
+      // fetch + build the Go client. go.mod pins the Go version (lab/go.mod `go` line); the distribution's Go downloads that toolchain
+      // itself (GOTOOLCHAIN=auto; this instance is in a public subnet)
       'install -d -o ec2-user -g ec2-user /home/ec2-user/lab',
       `aws s3 cp ${clientSrc.s3ObjectUrl} /tmp/lab.zip --region ${this.region}`,
       'unzip -o /tmp/lab.zip -d /home/ec2-user/lab',
       'chown -R ec2-user:ec2-user /home/ec2-user/lab',
       'chmod +x /home/ec2-user/lab/*.sh /home/ec2-user/lab/exp.py',
-      `sudo -u ec2-user -H bash -c 'cd /home/ec2-user/lab && export GOPATH=$HOME/go GOCACHE=$HOME/.cache/go-build && go mod tidy && go build -o lab .'`,
+      `sudo -u ec2-user -H bash -c 'cd /home/ec2-user/lab && export GOPATH=$HOME/go GOCACHE=$HOME/.cache/go-build GOTOOLCHAIN=auto && go mod tidy && go build -o lab .'`,
     );
 
     const client = new ec2.Instance(this, 'Client', {

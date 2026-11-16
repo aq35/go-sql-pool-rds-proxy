@@ -58,11 +58,11 @@ make push                           # lab/ だけ更新したいとき(再構築
 
 | チェック | 内容 | 落ちる条件 |
 |---|---|---|
-| Go | `gofmt`、`go vet`、`golangci-lint`、`go test -race`(カバレッジ)、ビルド、実験定義の検証 | いずれかが失敗 |
-| Go vulnerabilities | `govulncheck`(Go 1.25 の最新パッチ。ツールの異常終了も失敗)。**許可リストにない、呼ばれている脆弱性があれば失敗**。許可項目には期限がある | 新しい脆弱性、または期限切れ。既知の 1 件(`golang.org/x/text`)は [docs/known-vulnerabilities.md](docs/known-vulnerabilities.md) に、到達可能性・EC2 の Go・アップグレード手順を記載 |
+| Go | `gofmt`、`go vet`、`golangci-lint`(v2)、`go test -race`(カバレッジ)、ビルド、実験定義の検証、linux/arm64 へのクロスコンパイル | いずれかが失敗 |
+| Go vulnerabilities | `govulncheck`。**許可リストにない、呼ばれている脆弱性があれば失敗**(許可リストは今は空)。ツールの異常終了も失敗 | 新しい脆弱性、期限切れの許可。経緯と状態は [docs/known-vulnerabilities.md](docs/known-vulnerabilities.md) |
 | Python | `ruff`(構文、未定義・未使用)、コンパイル、単体テスト | いずれかが失敗 |
 | Shell | `shellcheck`(警告以上) | 警告以上がある |
-| Infra | CDK の型検査、`npm audit` | high 以上で失敗(全レベルは要約に表示) |
+| Infra | CDK の型検査、`cdk synth`(AWS の認証情報なしで合成)、`npm audit` | high 以上で失敗(全レベルは要約に表示)。moderate 2 件(`aws-cdk-lib` 同梱の `minimatch`)は上流待ち |
 | No credentials | アクセスキー、秘密鍵、アカウント付きの ARN、エンドポイント名、プライベート IP | 見つかった |
 
 同じ内容は、手元で `make check` でも実行できる。
