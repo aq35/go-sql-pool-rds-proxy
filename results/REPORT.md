@@ -8,7 +8,7 @@
 - 各条件の繰り返しは **2〜3 回**(`lifecycle-sync` は 1 回)。範囲 [最小–最大] を併記した。範囲が重なる差は、結論にしない。
 - **CloudWatch(1 分刻み)の列は、すべて、前後の run が混ざる。** run の間隔が約 40 秒のため。CPU は、飽和しているはずの run で 36% などと出たので、結論に使わない(先行調査の `capacity` の結果を使う)。`proxy_pinned_max`、`proxy_intx_max` なども、同じ理由で、直前の run の影響を受けうる(ただし、ピン留めされた run の直後の run で 0 だった例があり、ピン留めは接続を閉じるとすぐ消えるとみられる)。次の実行(`patterns-v2`)で、CPU は 1 秒値(Enhanced Monitoring)に置き換える。
 - 遅延を読む実験は、run の間の「接続数が下限に戻るまでの待ち」を省いた。そのため、**Proxy の `DatabaseConnections` は読まない**(前の run の残りを含む)。
-- `ClientConnections` は、実ソケット数より少なく出る(10 本で 5〜8)。ピン留めの数が、見かけ上、クライアント数に近くなる。**原因の有力な候補(未検証)**: この実験は、接続数のゲージをすべて `Maximum` で取っていた。AWS のドキュメントは、これらのゲージの推奨統計を **`Sum`** とし、「proxy は複数のインスタンスで提供されることがあり、指標はインスタンスごとに出る」と書いている(`docs/metrics.md`)。`Maximum` は、最も大きい 1 インスタンスの値しか見ない。**そうなら、`DatabaseConnections`、ピン留めの数、`InTransaction` も、実際より少なく出ている可能性がある。** 次の実行では、`Maximum` と `Sum` を同じ run で並べて取り、Go 側の `OpenConnections` と照合する。それまでは、この文書の Proxy の接続数の値は、**下限(少なくともこれだけ)として読む**。
+- `ClientConnections` は、実ソケット数より少なく出る(10 本で 5〜8)。ピン留めの数が、見かけ上、クライアント数に近くなる。**原因の有力な候補(未検証)**: この実験は、接続数のゲージをすべて `Maximum` で取っていた。AWS のドキュメントは、これらのゲージの推奨統計を **`Sum`** とし、「proxy は複数のインスタンスで提供されることがあり、指標はインスタンスごとに出る」と書いている(`docs/metrics.md`)。`Maximum` は、最も大きい 1 インスタンスの値しか見ない。**そうなら、`DatabaseConnections`、ピン留めの数、`InTransaction` も、実際より少なく出ている。** **スモークテスト(同日)で確認できた**: 同じ run で、`ClientConnections` は `Maximum` = 7、`Sum` = **10**(Go 側が数えた接続数 = 10 と一致)、`Average` = 5.0。Proxy は 2 ノードで、`Maximum` は片方だけを見ていた(詳細と注意: `docs/metrics.md`。n=1)。**この文書の Proxy の接続数の値は、下限として読む**(約 3 割少ない可能性)。特に A1(下限の 5 本)は、Proxy 全体では約 10 本の可能性がある(未検証)。
 - 先行調査(実験 0、A、B、D)は別リポジトリでの結果で、ここには含めない。
 - **版の注意**: この文書の結果は、**MySQL ドライバ v1.8.1、gorm v1.25.12、EC2 の `dnf` の Go(版は未記録)**で測った。コードは、その後、**Go 1.27.4、ドライバ v1.10.1、gorm v1.31.2** に更新した(`docs/known-vulnerabilities.md` §4)。以後の run は、`meta.json` の `go_version` / `go_deps` に版が残る。更新前後の結果は、傾向としてのみ比べる。
 
@@ -207,13 +207,13 @@ Proxy の IdleClientTimeout を 60 秒にし、各ワーカーが約 60 秒お�
 
 ### インフラの指摘(14 件 + 総評 3 件)への対応
 
-判断の根拠と、権限の一覧、未検証の項目は、[docs/infra-decisions.md](../docs/infra-decisions.md)。**すべて、`cdk synth` と型検査までの確認で、AWS では未実行。**
+判断の根拠と、権限の一覧、未検証の項目は、[docs/infra-decisions.md](../docs/infra-decisions.md)。**2026-11-16 のスモークテスト(実際にデプロイし、2 run を動かして削除)で確認し、不具合を 4 つ直した**(結果と、まだ確認していない項目: §9)。ターゲットグループの権限は、絞れなかった。
 
 | 指摘 | 対応 |
 |---|---|
 | P1 TLS(`requireTLS: false`) | 既定を `true` に。`-c requireTls=false` で切り替え。`--tls` を指定しない Go クライアントは、TLS 必須のときは `skip-verify` で接続(`skip-verify` は証明書を検証しないと明記)。平文を比べる run は `--tls=none` と `infra.require_tls=false` を要求し、合わないスタックでは、**実行せず「無効」として記録** |
 | P1 認証方式(`MYSQL_NATIVE_PASSWORD` 固定) | 既定は `native` のまま(比較可能性のため、黙って変えない)。`-c proxyAuth=sha2` を別条件として追加。条件は `meta.json` と manifest に入る |
-| P1 最小権限 | `ModifyDBInstance` を、この書き込みインスタンスだけに。ターゲットグループを、ワイルドカードから、この Proxy のものに。使う実験を表にした。**足りるかは未検証** |
+| P1 最小権限 | `ModifyDBInstance` を、この書き込みインスタンスだけに。`ModifyDBProxy` を、この Proxy だけに。**`ModifyDBProxyTargetGroup` は、絞れなかった**(ターゲットグループの ARN を CloudFormation から取る方法で、スタックの作成が失敗した。スモークテストで判明)。使う実験を表にした。**足りるかは未検証** |
 | P1 初期化失敗のシグナル | 失敗時に `FAILURE` を送る `trap`(ERR)。ログを `/var/log/lab-bootstrap.log` に。Go のツールチェーンの取得は、`make push` に移したので、失敗は `make deploy` の最後に出る |
 | P2 公開サブネット | 理由と、NAT / エンドポイントとの比較を記録し、今は現状維持(受信は許可しない、SSM のみ) |
 | P2 デバッグログ | 既定でオフ。`pat-pin` の間だけ、実験の `proxy` ブロックで有効にして、戻す。設定は `meta.json` の `proxy_settings` に残る |

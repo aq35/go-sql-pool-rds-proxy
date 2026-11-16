@@ -1,0 +1,99 @@
+{
+ "name": "tls-latency",
+ "question": "TLS と別 AZ のとき、MaxIdleConns=0 は遅延をどれだけ悪化させるか。いくつから頭打ちか",
+ "hypothesis": "0 では接続の作り直しで遅延が数倍になり、2〜5 で頭打ちになる。",
+ "reading": "hold_avg_ms と hold_p99_ms(client.log の最終行)を run id ごとに比べる。DatabaseConnections は読まない(遅延の実験)。",
+ "scenario": "pool-load",
+ "common": [
+  "--duration=5m",
+  "--lock-mode=none",
+  "--total-conns=30",
+  "--workers-per-pool=10",
+  "--hold=1ms",
+  "--query-every=20ms",
+  "--lifetime=0"
+ ],
+ "repeat": 3,
+ "observe_after_s": 120,
+ "needs_net_env": true,
+ "runs": [
+  {
+   "id": "plain-same-0",
+   "infra": {
+    "require_tls": "false"
+   },
+   "args": [
+    "--max-idle=0",
+    "--proxy-az=same",
+    "--tls=none"
+   ]
+  },
+  {
+   "id": "plain-same-5",
+   "infra": {
+    "require_tls": "false"
+   },
+   "args": [
+    "--max-idle=5",
+    "--proxy-az=same",
+    "--tls=none"
+   ]
+  },
+  {
+   "id": "tls-same-0",
+   "args": [
+    "--max-idle=0",
+    "--proxy-az=same",
+    "--tls=skip-verify"
+   ]
+  },
+  {
+   "id": "tls-same-5",
+   "args": [
+    "--max-idle=5",
+    "--proxy-az=same",
+    "--tls=skip-verify"
+   ]
+  },
+  {
+   "id": "tls-cross-0",
+   "args": [
+    "--max-idle=0",
+    "--proxy-az=cross",
+    "--tls=skip-verify"
+   ]
+  },
+  {
+   "id": "tls-cross-1",
+   "args": [
+    "--max-idle=1",
+    "--proxy-az=cross",
+    "--tls=skip-verify"
+   ]
+  },
+  {
+   "id": "tls-cross-2",
+   "args": [
+    "--max-idle=2",
+    "--proxy-az=cross",
+    "--tls=skip-verify"
+   ]
+  },
+  {
+   "id": "tls-cross-5",
+   "args": [
+    "--max-idle=5",
+    "--proxy-az=cross",
+    "--tls=skip-verify"
+   ]
+  },
+  {
+   "id": "tls-cross-10",
+   "args": [
+    "--max-idle=10",
+    "--proxy-az=cross",
+    "--tls=skip-verify"
+   ]
+  }
+ ]
+}

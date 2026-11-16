@@ -2,7 +2,7 @@
 
 `infra/lib/proxy-experiment-stack.ts` の設定のうち、**測定に影響するもの**と、**安全性・費用に関わるもの**を、理由とともに記録する。実験の結果は、ここに書いた条件のもとで得られたものである。
 
-> **この文書の変更は、すべて「未検証(AWS では未実行)」**。`cdk synth`(テンプレートの生成)と型検査は通っているが、この構成を実際にデプロイして動かしたのは、まだ。確認する項目は §9。
+> **この構成は、2026-11-16 のスモークテストで、実際にデプロイして確認した**(結果と、見つかった不具合は §9)。確認していない項目も §9 にある。
 
 ## 1. デプロイ時に切り替えられる設定
 
@@ -42,7 +42,8 @@
 | `cloudwatch:GetMetricData` | `*` | 指標の収集 | リソース単位の指定ができない |
 | `logs:GetLogEvents`、`FilterLogEvents` | `log-group:RDSOSMetrics:*` | 1 秒の Aurora CPU(`os_cpu`) | |
 | `ec2:DescribeNetworkInterfaces` | `*` | `netenv.sh`(Proxy の IP と AZ) | リソース単位の指定ができない |
-| `rds:ModifyDBProxy`、`ModifyDBProxyTargetGroup` | **この Proxy と、そのターゲットグループ**(CloudFormation の出力した ARN) | `proxy` ブロックのある実験(`lifecycle-sync`、`pat-idle-gap`、`pat-pin`)。設定を変えて、戻す | 以前は、ターゲットグループが `target-group:*`(アカウント内の全部)だった |
+| `rds:ModifyDBProxy` | **この Proxy だけ** | `proxy` ブロックのある実験(`lifecycle-sync`、`pat-idle-gap`、`pat-pin`)。設定を変えて、戻す | |
+| `rds:ModifyDBProxyTargetGroup` | この Proxy と、**このアカウント・リージョンの `target-group:*`**(絞れていない) | 同上(プールの割合を変える実験) | **絞れなかった**: ターゲットグループの ARN は `target-group:prx-tg-<ランダム>` で、デプロイ時には分からない。CloudFormation の `GetAtt(TargetGroupArn)` で取ろうとすると、スタックの作成が失敗した(`Value null at 'dBProxyName'`。**スモークテストで判明**。`cdk synth` では見つからない) |
 | `rds:DescribeDBProxies`、`DescribeDBProxyTargetGroups` | `*` | 設定の読み取り、復元の確認 | 読み取りのみ。リソース単位の指定は、確認できていない |
 | `rds:ModifyDBInstance`、`DescribeDBInstances` | **この書き込みインスタンスだけ** | クラスの切り替え(`cap` キャンペーン)、Aurora のリソース ID の取得 | 以前は `db:*`(アカウント内の全インスタンス)だった |
 | `cloudformation:SignalResource` | このスタック | ブートストラップの成功・失敗の通知 | |
@@ -91,15 +92,41 @@
 2. `-c budgetEmail=...` による、1 日のコスト予算の通知(アカウント全体のコスト)。
 3. `make finish` が、毎回「Stack is still running and billing」と表示する。
 
-## 9. 未検証の項目(次のデプロイで確認する)
+## 9. スモークテストの結果(2026-11-16)
+
+デプロイ → `make push` → キャンペーン `smoke`(`pat-pin` の `base` を 1 回、`tls-latency` の `plain-same-0` を 1 回)→ 削除。結果は `results/_smoke-2026-11-16/`。約 1 時間、費用は少額。**修正が要った不具合が 4 つ見つかった**(下の「見つかった不具合」)。
+
+### 確認できたこと
 
 | 項目 | 確認の方法 |
 |---|---|
-| ブートストラップが、新しいスクリプトで成功する(パスワードのファイル経由、`FAILURE` のシグナル) | デプロイの完了と、`/var/log/lab-bootstrap.log` |
-| `make push` が、デプロイ直後の空の `~/lab` に対して動く(`xz` の展開を含む) | `make deploy` の最後 |
-| EC2 で Go 1.27.4 のツールチェーンを取得できる | `meta.json` の `go_version` |
-| 絞った IAM 権限で、`proxy` ブロックのある実験とクラスの切り替えが動く | `pat-idle-gap` の最初の run、`cap` キャンペーン |
-| TLS 必須で、すべてのシナリオが接続できる(`skip-verify`) | 最初の run |
+| デプロイが完了する(2 回目。1 回目は不具合 1 で失敗) | `cdk deploy` が成功(1,202 秒) |
+| ブートストラップが成功する。パスワードの一時ファイルが残らない | `/var/log/lab-bootstrap.log` が `Complete!`、`/tmp` に一時ファイルなし |
+| `make push` が動く(`xz` の展開、原子的な入れ替え) | `PUSHED`、`~/lab/lab` のバイナリ |
+| EC2 で、Go 1.27.4 のツールチェーンを取得してビルドできる | `go version -m ./lab` = go1.27.4、ドライバ v1.10.1、gorm v1.31.2(**不具合 2 を直したうえで**) |
+| TLS 必須で、負荷クライアントが接続できる(`skip-verify`) | `pat-pin` の `base`: 33,148 クエリ、エラー 0 |
+| Proxy の設定変更と復元(`ModifyDBProxy` の実呼び出し) | 実行中の `proxy_settings.DebugLogging` = true、終了後は false、`finish` の検査が通った |
+| 1 秒の Aurora CPU(Enhanced Monitoring) | `os_cpu.json` 438 点(平均 7.9%、最大 72.5%)。`logs:GetLogEvents` の権限も実際に動いた |
+| インフラが合わない run は、実行せず「無効」と記録される | `tls-latency` の `plain-same-0`: `infra_mismatch: require_tls: needs false, the stack has true` |
+| IAM の絞り込み | `iam simulate-principal-policy`: この書き込みインスタンス、この Proxy、この `target-group`、`RDSOSMetrics` は許可。別のインスタンス、別の Proxy、無関係な Secret、別のロググループは拒否 |
+| 暗号化・削除の設定 | EBS: `Encrypted=True`、`DeleteOnTermination=True`。Aurora: `StorageEncrypted=True`。拡張モニタリング 1 秒。Proxy: `RequireTLS=True` |
+| 削除後に残るもの | RDS、EC2、**EBS**、VPC エンドポイント、Proxy のログ、Secret は、すべてなし。**`RDSOSMetrics` のストリームが 3 本**残った(スタックの外。保持 30 日) |
+| `finish` の削除ゲート | 証拠が揃っていないとき(不具合 3 の状態)は、削除を拒否した。直したあとは通り、削除した |
+
+### 見つかった不具合(いずれも、`cdk synth` と単体テストでは見つからなかった)
+
+1. **CloudFormation が、ターゲットグループの ARN を返せない。** IAM ポリシーに `GetAtt(TargetGroupArn)` を使うと、スタックの作成が失敗した(`Value null at 'dBProxyName'`)。→ `ModifyDBProxyTargetGroup` を `target-group:*` に戻した(実際の ARN は `target-group:prx-tg-<16進>`)。**この 1 つの権限は、絞れていない**(§4)。
+2. **EC2 の Go は、`go1.26.10` で、`GOTOOLCHAIN=local`、`GOSUMDB=off`、`GOPROXY=direct`**(ディストリビューションの既定)。`GOTOOLCHAIN=auto` だけでは、`go.mod` の Go 1.27.4 を取得できず、「checksum database disabled by GOSUMDB=off」で失敗した。→ `make push` で、`GOTOOLCHAIN=auto GOSUMDB=sum.golang.org GOPROXY=https://proxy.golang.org,direct` を指定。
+3. **`pinned`、`intx`、`borrowed` を、必須の系列にしたのが誤り。** 値が 0 を超えないとき、CloudWatch は**点を返さない**(エラーではない)。→ 点がない = 0 として扱う。エラーがある場合だけ、欠損とする。
+4. **結果の取得が、別のキャンペーンの結果を、黙って上書きした。** スモークの `pat-pin/base.r1` が、前回の本番の同名の run の生データを上書きした。→ 取得は、別の run を上書きしない(拒否する)。`LAB_RESULTS=results/<名前>` で、保存先を分けられる。**前回の本番の `pat-pin/base.r1` の生データは、失われた**(集計の `summary.md` と `runs.csv` は、Git にあり、無事)。
+
+### まだ確認していないこと
+
+| 項目 | 確認の方法 |
+|---|---|
+| `rds:ModifyDBProxyTargetGroup` の実呼び出し(プールの割合を変える実験) | `lifecycle-sync` など、割合を変える実験の最初の run |
+| `rds:ModifyDBInstance`(クラスの切り替え)の実呼び出し | `cap` キャンペーン(IAM のシミュレーションでは、この 1 台だけ許可と確認済み) |
 | `proxyAuth=sha2` で動く | 別のデプロイで、小さな実験 |
-| `requireTls=false` での平文の比較(`plain-*`) | 別のデプロイ |
-| Enhanced Monitoring の 1 秒値が取れる | `os_cpu.json` |
+| `requireTls=false` での平文の比較(`plain-*` が実行される) | 別のデプロイ |
+| `budgetEmail` の予算の通知 | `-c budgetEmail=...` でのデプロイ |
+| 標準的なキャンペーン(数時間)の長さでの、`push` の入れ替え、`recollect` | 実際のキャンペーンの運用で |

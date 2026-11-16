@@ -59,6 +59,29 @@ class Judge(unittest.TestCase):
         r = exp.judge({"required_metrics": ["os_cpu"]}, self.dir, meta, T0, self.end)["reasons"]
         self.assertTrue(any(x.startswith("os_cpu_sparse") for x in r), r)
 
+    def test_empty_zero_gauges_mean_zero_not_missing(self):
+        # smoke test: CloudWatch sends no points for pinned / intx / borrowed while they were never above 0
+        meta = write_run(self.dir, series=("client", "dbconn", "cpu"))
+        m = json.loads((self.dir / "metrics.json").read_text())
+        m["series"].update({"pinned": {"points": []}, "intx": {"points": []}})
+        (self.dir / "metrics.json").write_text(json.dumps(m))
+        j = exp.judge({"required_metrics": ["client", "dbconn", "cpu", "pinned", "intx"]}, self.dir, meta, T0, self.end)
+        self.assertTrue(j["valid"], j)
+
+    def test_empty_non_zero_gauge_is_still_missing(self):
+        meta = write_run(self.dir, series=("client", "dbconn", "cpu"))
+        m = json.loads((self.dir / "metrics.json").read_text())
+        m["series"]["client"]["points"] = []                  # ClientConnections must have points while a client is connected
+        (self.dir / "metrics.json").write_text(json.dumps(m))
+        self.assertIn("metric_missing:client", exp.judge({}, self.dir, meta, T0, self.end)["reasons"])
+
+    def test_failed_zero_gauge_query_is_missing(self):
+        meta = write_run(self.dir, series=("client", "dbconn", "cpu"))
+        m = json.loads((self.dir / "metrics.json").read_text())
+        m["series"]["pinned"] = {"points": [], "error": "AccessDenied"}
+        (self.dir / "metrics.json").write_text(json.dumps(m))
+        self.assertIn("metric_missing:pinned", exp.judge({"required_metrics": ["pinned"]}, self.dir, meta, T0, self.end)["reasons"])
+
     def test_os_cpu_not_required_is_not_checked(self):
         meta = write_run(self.dir, os_points=0, os_error="x")
         self.assertTrue(exp.judge({}, self.dir, meta, T0, self.end)["valid"])

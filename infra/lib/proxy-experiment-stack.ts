@@ -172,12 +172,14 @@ export class ProxyExperimentStack extends cdk.Stack {
     // lab/netenv.sh maps the proxy endpoint IPs to AZs for --proxy-az=same|cross
     role.addToPolicy(new iam.PolicyStatement({ actions: ['ec2:DescribeNetworkInterfaces'], resources: ['*'] }));
     // Experiments with a `proxy` block change Proxy settings (IdleClientTimeout, pool percentages, DebugLogging) and restore them.
-    // Scoped to THIS proxy and THIS target group. docs/infra-decisions.md lists which permission each lab step uses.
-    const targetGroup = proxy.node.findAll().find((c) => c instanceof rds.CfnDBProxyTargetGroup) as rds.CfnDBProxyTargetGroup | undefined;
-    if (!targetGroup) throw new Error('could not find the proxy target group construct (CDK internals changed?)');
+    // ModifyDBProxy is scoped to THIS proxy. ModifyDBProxyTargetGroup could NOT be scoped to this proxy's target group: the target group
+    // ARN (arn:...:target-group:prx-tg-<random>) is not available at deploy time. Reading it with GetAtt(TargetGroupArn) made the
+    // stack fail to create ("Value null at 'dBProxyName'", found by the smoke test), so that action stays on target-group:* of this
+    // account and region. docs/infra-decisions.md lists which permission each lab step uses.
+    role.addToPolicy(new iam.PolicyStatement({ actions: ['rds:ModifyDBProxy'], resources: [proxy.dbProxyArn] }));
     role.addToPolicy(new iam.PolicyStatement({
-      actions: ['rds:ModifyDBProxy', 'rds:ModifyDBProxyTargetGroup'],
-      resources: [proxy.dbProxyArn, targetGroup.attrTargetGroupArn],
+      actions: ['rds:ModifyDBProxyTargetGroup'],
+      resources: [proxy.dbProxyArn, `arn:aws:rds:${this.region}:${this.account}:target-group:*`],
     }));
     // Describe* are read-only. Resource-level scoping of the Proxy describe actions was not verified, so they stay on "*".
     role.addToPolicy(new iam.PolicyStatement({

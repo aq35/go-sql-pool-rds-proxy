@@ -259,6 +259,18 @@ def manifest_of(e, r, cls, version, binary_sha):
 DEFAULT_REQUIRED = ["client", "dbconn", "cpu"]
 
 
+# CloudWatch returns NO data points for these gauges while their value has never been above zero (found by the smoke test: a run
+# without pinning has an empty `pinned` series with no error). An empty series therefore means 0 and is not a missing measurement;
+# only a failed query (an "error" on the series) or a series that was never requested is.
+ZERO_IF_EMPTY = {"pinned", "intx", "borrowed"}
+
+
+def series_missing(m, k):
+    """True if the CloudWatch series `k` of a run was not collected. `m` is metrics.json["series"] (None if unreadable)."""
+    if m is None or not m.get(k) or m[k].get("error"): return True
+    return not m[k].get("points") and k.split("__")[0] not in ZERO_IF_EMPTY
+
+
 def judge(e, rdir, meta, start, run_end):
     """Validity of one finished run, separate from "completed" (the `ok` marker). Returns {valid, reasons}. A run that is not valid is
     kept (an unmet target or a missing series is still an observation) but is not aggregated as a successful measurement."""
@@ -277,7 +289,7 @@ def judge(e, rdir, meta, start, run_end):
             n = sum(1 for t, *_ in o.get("points", []) if start + dt.timedelta(seconds=20) <= dt.datetime.fromisoformat(t.replace("Z", "+00:00")) <= run_end)
             if o.get("error") or not o.get("points"): reasons.append("os_cpu_missing")
             elif n < 0.8 * span: reasons.append(f"os_cpu_sparse:{n}/{span}")
-        elif m is None or not m.get(k) or m[k].get("error") or not m[k].get("points"):
+        elif series_missing(m, k):
             reasons.append(f"metric_missing:{k}")
     return {"valid": not reasons, "reasons": reasons}
 

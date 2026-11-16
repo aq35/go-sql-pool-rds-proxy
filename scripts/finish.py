@@ -14,13 +14,17 @@ The stack is destroyed ONLY if --destroy is given AND the evidence is complete:
 An invalid run (failed, target not reached, baseline unmet) is evidence too: it is kept and listed, and does not block the destroy.
 Otherwise nothing is destroyed and the failed checks are printed (the instance keeps the raw data).
 """
-import json, pathlib, subprocess, sys
+import json, os, pathlib, subprocess, sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
+results = root / os.environ.get("LAB_RESULTS", "results")     # same variable as scripts/lab.sh fetch
 name = sys.argv[1]
 destroy = "--destroy" in sys.argv
 camp = json.loads((root / "lab/campaigns" / f"{name}.json").read_text())
 problems = []
+# CloudWatch returns no data points for these gauges while they have never been above zero: an empty series means 0, not "not collected"
+# (same rule as lab/exp.py ZERO_IF_EMPTY; found by the smoke test). A series with an "error" is still a failure.
+ZERO_IF_EMPTY = {"pinned", "intx", "borrowed"}
 
 
 def sh(cmd, **kw):
@@ -50,9 +54,9 @@ for exp in sorted({e for e, _, _ in exps}):
 checks = []
 for exp, c, step in exps:
     if c is not None:
-        checks.append((exp, root / "results" / f"{exp}__{c}", step))
+        checks.append((exp, results / f"{exp}__{c}", step))
     else:  # no aurora_class in the campaign: the class is whatever the runner recorded
-        found = sorted((root / "results").glob(f"{exp}__db.*"))
+        found = sorted(results.glob(f"{exp}__db.*"))
         if not found: problems.append(f"missing results dir {exp}__*")
         checks += [(exp, d, step) for d in found]
 validity = {}
@@ -83,7 +87,7 @@ for exp, d, step in checks:
                     except Exception: o = {"points": [], "error": "missing os_cpu.json"}
                     if o.get("error") or not o.get("points"):
                         problems.append(f"{tag}: required per-second Aurora CPU (os_cpu) missing: {o.get('error')}  -> exp.py recollect {exp} (while the stack is up)")
-                elif not m.get(k) or m[k].get("error") or not m[k].get("points"):
+                elif not m.get(k) or m[k].get("error") or (not m[k].get("points") and k not in ZERO_IF_EMPTY):
                     problems.append(f"{tag}: required series {k!r} empty/failed")
             validity.setdefault(exp, []).append((tag, val))
     if not (d / "summary.md").exists(): problems.append(f"{d.name}: no summary.md")
@@ -123,9 +127,9 @@ if lg.stdout.strip():
           "delete it only if nothing else uses this account's Enhanced Monitoring: aws logs delete-log-stream --log-group-name RDSOSMetrics --log-stream-name <DbiResourceId>")
 
 idx = [f"# campaign {name}", "", camp.get("description", ""), ""]
-for d in sorted((root / "results").glob("*__db.*")):
+for d in sorted(results.glob("*__db.*")):
     idx.append(f"- [{d.name}]({d.name}/summary.md)")
-(root / "results" / f"CAMPAIGN-{name}.md").write_text("\n".join(idx) + "\n")
+(results / f"CAMPAIGN-{name}.md").write_text("\n".join(idx) + "\n")
 
 if problems:
     print("\nNOT DESTROYING. Problems:"); [print(" -", p) for p in problems]

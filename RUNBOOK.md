@@ -19,8 +19,10 @@ make start EXP=<名前> REPEAT=3     # 例: idle-sweep(約 1 時間 × 繰り返
 make status EXP=<名前>             # 10〜15 分おき
 make fetch EXP=<名前>              # 終わったら取得。results/<名前>/summary.md
 ```
+- **EC2 の Go は、ディストリビューションの既定(`GOTOOLCHAIN=local`、`GOSUMDB=off`、`GOPROXY=direct`)**。`go.mod` の Go を取得させるため、`make push` は、環境変数で上書きしてビルドする。手でビルドするときも同じ(`docs/infra-decisions.md` §9)。
 - 実験の中身(問い、仮説、読み方)は `lab/experiments/<名前>.json`。
 - 各 run は、開始前に `DatabaseConnections` が下限へ戻るまで待つ(最大 20 分)。戻らなかった run は、summary.md の警告に出る。再実験するか、その run を比較から外す。
+- 結果は、実験名ごとのディレクトリに取得される(`results/<実験名>__<クラス>/`)。**別のキャンペーン(スモークテストなど)の結果を、同じ名前の本番の結果に混ぜない**: `LAB_RESULTS=results/<名前> make finish CAMPAIGN=...` で、保存先を分ける。取得は、同名で別の run の証拠を、上書きしない(拒否する)。
 - `lab/` を直したら `make check` → `make push`(再構築なし)。新しいディレクトリに展開してビルドと `exp.py check` を行い、成功したときだけ入れ替わる(実験の実行中は拒否される。結果の `~/lab/out/` は引き継がれる)。
 - 各 run の `meta.json` には、使った Go と依存のバージョン(`go_version`、`go_deps`)、インフラの条件(`infra`: TLS 必須か、認証方式)、実行中の Proxy の設定(`proxy_settings`)が残る。平文を比べる run(`infra.require_tls=false` を要求)は、スタックが合わないときは、**実行されず、「無効」として記録される**。
 - 途中で異常終了した run があれば、`results/<名前>/<run>/client.log` を読む(`Access denied`、`Too many connections`、借用タイムアウトも結果の一部)。

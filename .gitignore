@@ -21,3 +21,8 @@ results/*__*/expected.json
 
 __pycache__/
 *.pyc
+
+# smoke-test raw runs (same rule as the other results)
+results/_smoke-*/*__*/*.r*/
+results/_smoke-*/*__*/status.json
+results/_smoke-*/*__*/expected.json

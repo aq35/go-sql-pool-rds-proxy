@@ -8,7 +8,7 @@ Go を **1.27.4**、依存を最新にした(`golang.org/x/text` v0.44.0、`go-s
 
 CI の `Go vulnerabilities` ジョブは、**許可リストにない、呼ばれている脆弱性があれば失敗する**。許可リストは今は空なので、**どの新しい脆弱性も、そのまま CI を止める**。許可リストに入れるときは、項目に**期限**と理由を付ける(期限が過ぎると失敗する)。許可した項目も、毎回の要約に表示される。
 
-> **まだ確認していないこと**: EC2 での、この Go 1.27.4 のビルド。EC2 は、`dnf` の Go(1.25 系の見込み)で、`go.mod` の `go 1.27.4` を見て、**ツールチェーンを自動で取得する**(`GOTOOLCHAIN=auto`)はず。クライアントの EC2 は公開サブネットにあり、すでに `go mod tidy` でモジュールを取得しているので、取得できる見込みだが、**実機では未検証**。次のデプロイで、`meta.json` の `go_version`(実際に使われた Go)と `go_deps`(依存のバージョン)で確認する。
+> **EC2 での確認(2026-11-16 のスモークテスト、`docs/infra-decisions.md` §9)**: EC2 の `dnf` の Go は、**1.25 系ではなく `go1.26.10`**(推定は外れた)。ディストリビューションの既定は `GOTOOLCHAIN=local`、`GOSUMDB=off`、`GOPROXY=direct` で、そのままでは `go.mod` の `go 1.27.4` を取得できず、「checksum database disabled by GOSUMDB=off」で失敗した。`make push` で `GOTOOLCHAIN=auto GOSUMDB=sum.golang.org GOPROXY=https://proxy.golang.org,direct` を指定したところ、**Go 1.27.4 で取得・ビルドできた**(`go version -m ./lab` = go1.27.4、ドライバ v1.10.1、gorm v1.31.2)。実行ごとの `meta.json` の `go_version`、`go_deps` にも残る。
 
 ## 2. 経緯(同じ誤りを繰り返さないための記録)
 
