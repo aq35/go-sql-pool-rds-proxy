@@ -37,7 +37,8 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: golangci-lint
-        if: matrix.go == 'stable'
+        # v1.63.4 was built with Go 1.23 and cannot read the export data of newer standard libraries (fails on Go 1.27)
+        if: matrix.go == '1.22'
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.63.4
@@ -61,19 +62,28 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: stable          # latest patch release: standard-library findings of old toolchains disappear
+          # NOT `stable`: govulncheck v1.1.4 crashes on the newest toolchains (panic: unexpected expr: *ast.KeyValueExpr).
+          # 1.25 is the series the EC2 build host is expected to have (docs/known-vulnerabilities.md §3); the latest patch of
+          # it has the standard-library fixes, so only module findings remain.
+          go-version: "1.25"
           cache-dependency-path: lab/go.sum
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
       - name: text report (always shown)
+        # govulncheck exits 0 = nothing, 3 = vulnerabilities found. Anything else (e.g. 2) is the TOOL failing: that must fail the job.
         run: |
-          govulncheck ./... > vuln.txt || true
-          { echo "### govulncheck"; echo '```'; tail -40 vuln.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          govulncheck ./... > vuln.txt 2>&1
+          code=$?
+          set -e
+          { echo "### govulncheck (exit $code)"; echo '```'; tail -40 vuln.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then echo "::error title=govulncheck::the tool failed (exit $code), so nothing was scanned"; exit 1; fi
       - name: gate (blocking)
-        # Fails on any CALLED vulnerability that is not in docs/known-vulnerabilities.json, or whose entry has expired.
-        # The known finding, its reachability, the EC2 Go version and the upgrade plan: docs/known-vulnerabilities.md
+        # Fails on any CALLED vulnerability that is not in docs/known-vulnerabilities.json, or whose entry has expired,
+        # and on input that shows the tool did not run. The known finding, its reachability, the EC2 Go version and the
+        # upgrade plan: docs/known-vulnerabilities.md
         run: |
           govulncheck -json ./... > vuln.json
           python3 ../scripts/vuln_gate.py vuln.json ../docs/known-vulnerabilities.json

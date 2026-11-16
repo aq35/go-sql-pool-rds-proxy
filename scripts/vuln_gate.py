@@ -13,16 +13,19 @@ import datetime as dt, json, os, sys
 
 def findings(text):
     """Called findings: {osv id: {module, found, fixed}} from the concatenated JSON objects of govulncheck -json."""
-    dec, i, out = json.JSONDecoder(), 0, {}
+    dec, i, out, saw_config = json.JSONDecoder(), 0, {}, False
     while i < len(text):
         while i < len(text) and text[i].isspace(): i += 1
         if i >= len(text): break
         obj, i = dec.raw_decode(text, i)
+        saw_config = saw_config or "config" in obj
         f = obj.get("finding")
         if not f: continue
         tr = f.get("trace") or [{}]
         if "function" not in tr[0]: continue          # imported or required only: not called
         out[f["osv"]] = {"module": tr[0].get("module", "?"), "found": tr[0].get("version", "?"), "fixed": f.get("fixed_version", "?")}
+    if not saw_config:      # an empty or crashed run must not read as "no vulnerabilities"
+        raise ValueError("no govulncheck config message in the input: the tool did not run (empty or truncated output)")
     return out
 
 
@@ -44,7 +47,11 @@ def gate(found, allow, today):
 
 
 def main(argv):
-    found = findings(open(argv[1]).read())
+    try:
+        found = findings(open(argv[1]).read())
+    except ValueError as e:
+        print("::error title=govulncheck::" + str(e) if os.environ.get("GITHUB_ACTIONS") else str(e), file=sys.stderr)
+        return 1
     allow = json.load(open(argv[2]))
     problems, rows, stale = gate(found, allow, dt.date.today())
     lines = [f"### govulncheck gate: {len(found)} called vulnerabilities, {len(problems)} blocking", "",

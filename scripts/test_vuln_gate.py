@@ -15,22 +15,29 @@ MODULE_ONLY = {"finding": {"osv": "GO-X-3", "fixed_version": "v9", "trace": [{"m
 
 
 class Gate(unittest.TestCase):
+    def test_empty_or_crashed_output_is_not_a_clean_scan(self):
+        with self.assertRaises(ValueError): g.findings("")
+        with self.assertRaises(ValueError): g.findings(stream({"progress": {"message": "x"}}))     # no config message: the tool never started
+
+    def test_clean_scan_with_config_has_no_findings(self):
+        self.assertEqual(g.findings(stream({"config": {"scanner_name": "govulncheck"}})), {})
+
     def test_only_called_findings_count(self):
         f = g.findings(stream({"config": {}}, {"osv": {"id": "GO-X-1"}}, CALLED, IMPORTED, MODULE_ONLY))
         self.assertEqual(list(f), ["GO-X-1"])
 
     def test_unknown_called_vulnerability_blocks(self):
-        problems, _, _ = g.gate(g.findings(stream(CALLED)), [], TODAY)
+        problems, _, _ = g.gate(g.findings(stream({"config": {}}, CALLED)), [], TODAY)
         self.assertEqual(len(problems), 1)
         self.assertTrue(problems[0].startswith("NEW"))
 
     def test_allowlisted_passes_but_stays_listed(self):
-        problems, rows, _ = g.gate(g.findings(stream(CALLED)), [{"id": "GO-X-1", "expires": "2026-12-31", "reason": "r"}], TODAY)
+        problems, rows, _ = g.gate(g.findings(stream({"config": {}}, CALLED)), [{"id": "GO-X-1", "expires": "2026-12-31", "reason": "r"}], TODAY)
         self.assertEqual(problems, [])
         self.assertEqual(len(rows), 1)
 
     def test_expired_allowlist_entry_blocks(self):
-        problems, _, _ = g.gate(g.findings(stream(CALLED)), [{"id": "GO-X-1", "expires": "2026-11-15", "reason": "r"}], TODAY)
+        problems, _, _ = g.gate(g.findings(stream({"config": {}}, CALLED)), [{"id": "GO-X-1", "expires": "2026-11-15", "reason": "r"}], TODAY)
         self.assertTrue(problems[0].startswith("EXPIRED"))
 
     def test_stale_allowlist_entries_are_reported(self):

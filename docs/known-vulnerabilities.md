@@ -10,7 +10,9 @@ CI の `Go vulnerabilities` ジョブは、**許可リストにない、呼ば�
 |---|---|---|---|---|
 | [GO-2026-5970](https://pkg.go.dev/vuln/GO-2026-5970) | `golang.org/x/text` | v0.14.0 | **v0.39.0** | 許可(期限 2026-12-31)。**未修正** |
 
-標準ライブラリの脆弱性(21 件)は、ローカルの Go 1.25.0 が古いための結果で、CI(最新パッチの Go)には出ない。ただし、**CI の Go と、EC2 でビルドする Go は別物**(§3)。
+標準ライブラリの脆弱性(21 件)は、ローカルの Go 1.25.0 が古いための結果で、CI(Go 1.25 の最新パッチ)には出ない。ただし、**CI の Go と、EC2 でビルドする Go は別物**(§3)。
+
+> **訂正(2026-11-16)**: この PR の最初の CI は、`govulncheck` が「exit 2」を返したのを、脆弱性の検出として扱っていた。**exit 2 は、ツールの異常終了**(検出は exit 3)。実際は、`govulncheck` v1.1.4 が、CI の Go 1.27.4 で `panic: unexpected expr: *ast.KeyValueExpr` とクラッシュしており、**CI 上では、一度もスキャンできていなかった**(上の数値は、ローカルの実行による)。CI は、(1) スキャンの Go を 1.25 の最新パッチに固定し、(2) 終了コードが 0 と 3 以外なら失敗にし、(3) ゲートは、`config` のない(ツールが動いていない)入力を拒否するようにした。
 
 ## 2. GO-2026-5970(`golang.org/x/text`、入力が不正なときの無限ループ)
 
@@ -25,7 +27,7 @@ CI の `Go vulnerabilities` ジョブは、**許可リストにない、呼ば�
 - **推定**: AL2023 のリリースノートでは、2026 年 5〜6 月の時点で、`golang` は 1.25.10〜1.25.11([2023.11.20260526](https://docs.amazonaws.cn/en_us/linux/al2023/release-notes/relnotes-2023.11.20260526.md)、[2023.12.20260622](https://docs.amazonaws.cn/en_us/linux/al2023/release-notes/relnotes-2023.12.20260622.md))。
 - **未確認**: 2026-11-16 に実際にデプロイしたインスタンスの `go version` は、**記録していなかった**(インスタンスは削除済み)。上は、リリースノートからの推定で、実機の確認ではない。
 - **今後**: `exp.py` が、run ごとの `meta.json` に、EC2 の `go version`(`go_version`)を記録する(この PR で追加)。`make push` と `make deploy` の後に、`scripts/ssm-run.sh 'go version'` でも確認できる。
-- **CI との違い**: CI の `govulncheck` は、(a)`go.mod` / `go.sum` の**依存モジュール**(EC2 でも同じ版が使われるので、判定が一致する)と、(b)**CI の Go の標準ライブラリ**(EC2 の Go とは別)を調べる。(b) は、EC2 の Go の脆弱性を保証しない。EC2 の標準ライブラリの脆弱性は、`go_version` を、`govulncheck` が示す「Fixed in」の版と見比べて、手で確認する(§4 の手順 1)。
+- **CI との違い**: CI の `govulncheck`(Go 1.25 の最新パッチ)は、(a)`go.mod` / `go.sum` の**依存モジュール**(EC2 でも同じ版が使われるので、判定が一致する)と、(b)**CI の Go の標準ライブラリ**(EC2 の Go とは別)を調べる。(b) は、EC2 の Go の脆弱性を保証しない。EC2 の標準ライブラリの脆弱性は、`go_version` を、`govulncheck` が示す「Fixed in」の版と見比べて、手で確認する(§4 の手順 1)。
 
 ## 4. アップグレードの計画と検証
 
