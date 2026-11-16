@@ -153,16 +153,23 @@ def patterns_summary():
     cls = next((json.loads(m.read_text()).get("aurora_class") for m in d.glob("*.r*/meta.json")), "?")
     out = [f"# {exp['name']} — {cls}", "", f"**問い**: {exp['question']}", "", f"**仮説**: {exp['hypothesis']}", "", f"**読み方**: {exp['reading']}", ""]
     ID_KEYS = {"mode", "test", "variant", "max_open", "rps", "timeout_ms", "warm", "conns", "queries_per_request", "mix", "lifetime_s", "workers", "summary", "trial", "gap_s", "idle_time_s", "query", "pause_s"}
-    groups, order = {}, []
+    groups, order, failures = {}, [], []
     for rid in [r["id"] for r in exp["runs"]]:
         for rdir in sorted(d.glob(f"{rid}.r*")):
             if not (rdir / "ok").exists() or not (rdir / "metrics.json").exists(): continue
             meta = json.loads((rdir / "meta.json").read_text())
+            # completed (ok) is not valid: only valid runs are aggregated; the others are listed below, never mixed into medians
+            if (rdir / "valid.json").exists(): val = json.loads((rdir / "valid.json").read_text())
+            else: val = {"valid": meta["rc"] == 0 and not meta["baseline"]["unmet"], "reasons": [] if meta["rc"] == 0 else [f"rc={meta['rc']}"]}   # runs from before valid.json existed
+            if not val["valid"]:
+                failures.append((rid, meta["rep"], val["reasons"])); continue
             m = json.loads((rdir / "metrics.json").read_text())
             start, end = P(meta["start"]), P(meta["run_end"])
             inrun = lambda k: [v for t, v in series(m, k) if start <= t <= end + dt.timedelta(minutes=1)]
-            side = {"proxy_db_max": max(inrun("dbconn") or [0]), "proxy_pinned_max": max(inrun("pinned") or [0]),
-                    "proxy_intx_max": max(inrun("intx") or [0]), "proxy_client_max": max(inrun("client") or [0])}
+            side = {"proxy_condition": "warm" if "warm-proxy" in meta.get("condition", "") else ("settled" if meta.get("condition") else None)}
+            for k in ("client", "dbconn", "pinned", "intx"):   # Maximum (configured) and Sum (AWS-recommended) side by side
+                side[f"proxy_{k}_max"] = max(inrun(k) or [0])
+                if m["series"].get(f"{k}__Sum", {}).get("points"): side[f"proxy_{k}_sum"] = max(inrun(f"{k}__Sum") or [0])
             # Aurora OS CPU per second (Enhanced Monitoring), cut to this run: skip the first 20 s (warm-up) and stop at the end of the run
             osf = rdir / "os_cpu.json"
             if osf.exists():
@@ -207,8 +214,9 @@ def patterns_summary():
     errs = sorted({r.get("err_sample") or r.get("err") for k in order for r in groups[k] if (r.get("err_sample") or r.get("err"))})
     errs = [re.sub(r"\d+\.\d+\.\d+\.\d+(:\d+)?", "<ip>", e) for e in errs]     # no addresses in published summaries
     if errs: out += ["", "エラーの例: " + " / ".join(errs[:6])]
-    warn = [f"- {k[0]}: 実行が異常終了（rc≠0）" for k in order if any(r["rc"] != 0 for r in groups[k])]
-    out += ["", "## 警告", *(warn or ["なし"])]
+    out += ["", "## 無効な run(集計に含めていない。データは保存してある)", ""]
+    out += [f"- {rid}.r{rep}: {', '.join(rs) or '理由不明'}" for rid, rep, rs in failures] or ["なし"]
+    out += ["", "`proxy_condition`: warm = 前の run の Proxy→Aurora の接続が残っている可能性がある(下限まで待っていない)、settled = 下限まで待った。両者を混ぜて比べない。", "`proxy_*_max` は Maximum、`proxy_*_sum` は Sum(AWS の推奨。`docs/metrics.md`)。"]
     (d / "runs.csv").write_text("\n".join(csv) + "\n")
     (d / "summary.md").write_text("\n".join(out) + "\n"); print("\n".join(out)); sys.exit(0)
 

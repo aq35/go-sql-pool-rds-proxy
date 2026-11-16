@@ -1,8 +1,8 @@
 {
  "name": "pat-stampede",
- "question": "32 本が同時に作られ、同時に ConnMaxLifetime(60 秒)を迎えると、再接続のスパイクで遅延が悪化するか。作る時刻をずらすと、どれだけ緩和するか",
- "hypothesis": "sync では、60 秒ごとに、32 本が同じ秒に作り直され、その秒の p99 が、定常より悪化する。staggered では、1 秒あたりの新規接続が 1〜2 本に分散し、p99 の悪化が小さい。",
- "reading": "peak_connects_per_s と steady_p99_ms を比べる。どちらも、最初の 1 回目の寿命(65 秒)が過ぎ、全ワーカーが動いている区間(steady)だけで集計する(前回は、staggered の開始の遅れが、総クエリ数の差になっていた)。3 回の繰り返しの範囲が重なれば、差は結論にしない。steady_connects は、その区間の新規接続の総数(sync と staggered で近いはず)。",
+ "question": "32 本が同時に作られ、同時に ConnMaxLifetime(60 秒)を迎えると、再接続のスパイクで遅延が悪化するか。作る時刻をずらすと、どれだけ緩和するか。ConnMaxLifetime=0(時間による入れ替えなし)を対照にする",
+ "hypothesis": "sync では、60 秒ごとに、32 本が同じ秒に作り直され、その秒の p99 が、定常より悪化する。staggered では、1 秒あたりの新規接続が 1〜2 本に分散し、p99 の悪化が小さい。 lifetime=0(対照)では、定常区間の新規接続がほぼ 0 で、p99 のスパイクもない。対照にも同程度のスパイクがあるなら、寿命以外(クライアントやネットワークの揺らぎ)が原因。",
+ "reading": "peak_connects_per_s と steady_p99_ms を比べる。どちらも、最初の 1 回目の寿命(65 秒)が過ぎ、全ワーカーが動いている区間(steady)だけで集計する(前回は、staggered の開始の遅れが、総クエリ数の差になっていた)。3 回の繰り返しの範囲が重なれば、差は結論にしない。steady_connects は、その区間の新規接続の総数(sync と staggered で近いはず)。 peak_connects_at_s(再接続が最大の秒)と peak_p99_at_s(p99 が最悪の秒)は別の秒かもしれない。p99_at_peak_connects_ms と n_at_peak_connects(その秒の標本数)、top3_connect_secs(再接続が多い 3 つの秒の p99)で、再接続の多い秒の遅延を見る。sync-nolife は対照。",
  "scenario": "patterns",
  "common": [
   "--mode=stampede",
@@ -29,6 +29,19 @@
    "args": [
     "--variant=staggered"
    ]
+  },
+  {
+   "id": "sync-nolife",
+   "args": [
+    "--variant=sync",
+    "--lifetime=0"
+   ]
   }
+ ],
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
  ]
 }

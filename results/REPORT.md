@@ -8,7 +8,7 @@
 - 各条件の繰り返しは **2〜3 回**(`lifecycle-sync` は 1 回)。範囲 [最小–最大] を併記した。範囲が重なる差は、結論にしない。
 - **CloudWatch(1 分刻み)の列は、すべて、前後の run が混ざる。** run の間隔が約 40 秒のため。CPU は、飽和しているはずの run で 36% などと出たので、結論に使わない(先行調査の `capacity` の結果を使う)。`proxy_pinned_max`、`proxy_intx_max` なども、同じ理由で、直前の run の影響を受けうる(ただし、ピン留めされた run の直後の run で 0 だった例があり、ピン留めは接続を閉じるとすぐ消えるとみられる)。次の実行(`patterns-v2`)で、CPU は 1 秒値(Enhanced Monitoring)に置き換える。
 - 遅延を読む実験は、run の間の「接続数が下限に戻るまでの待ち」を省いた。そのため、**Proxy の `DatabaseConnections` は読まない**(前の run の残りを含む)。
-- `ClientConnections` は、実ソケット数より少なく出る(10 本で 5〜8)。ピン留めの数が、見かけ上、クライアント数に近くなる。
+- `ClientConnections` は、実ソケット数より少なく出る(10 本で 5〜8)。ピン留めの数が、見かけ上、クライアント数に近くなる。**原因の有力な候補(未検証)**: この実験は、接続数のゲージをすべて `Maximum` で取っていた。AWS のドキュメントは、これらのゲージの推奨統計を **`Sum`** とし、「proxy は複数のインスタンスで提供されることがあり、指標はインスタンスごとに出る」と書いている(`docs/metrics.md`)。`Maximum` は、最も大きい 1 インスタンスの値しか見ない。**そうなら、`DatabaseConnections`、ピン留めの数、`InTransaction` も、実際より少なく出ている可能性がある。** 次の実行では、`Maximum` と `Sum` を同じ run で並べて取り、Go 側の `OpenConnections` と照合する。それまでは、この文書の Proxy の接続数の値は、**下限(少なくともこれだけ)として読む**。
 - 先行調査(実験 0、A、B、D)は別リポジトリでの結果で、ここには含めない。
 
 ## 1. 計画の実験と、実施状況
@@ -178,3 +178,28 @@ Proxy の IdleClientTimeout を 60 秒にし、各ワーカーが約 60 秒お�
 | 9 | stampede の条件がそろっていない(総クエリ数が約 9% 違う) | 差の一部が、負荷の差の可能性 | 未対応 |
 | 10 | ウォームアップで、Proxy 側が温まったまま | 本当のコールドスタートは、もっと遅い可能性 | 未対応(Proxy 側を冷やす条件が要る) |
 | 11 | 公式のドキュメントや先行調査で確かめていない「ピン留めの条件」(ほかの `SET` など) | G-3 は、`time_zone` と `sql_mode` だけ | 範囲を明記した |
+
+## 11. レビュー指摘(PR #1)への対応
+
+| 指摘 | 対応 | 状態 |
+|---|---|---|
+| P0 `ok` が「実行終了」と「測定有効」を兼ねる | `ok` を「completed」とし、`valid.json`(rc、負荷達成、baseline、必須系列、1 秒 CPU の完全性)を別に持つ。無効な run は保存し、集計から除く(別に一覧) | 実装済み(未検証: AWS で未実行) |
+| P0 削除前のチェック | 「証拠回収完了」(`meta.json`、`valid.json`、必須系列、`os_cpu`)を厳格化して削除の条件にし、「有効な成功」は別に報告する | 実装済み(未検証) |
+| P1 `Maximum` と `Sum` | `docs/metrics.md` に指標ごとの推奨統計を記録。ゲージを `Maximum` / `Sum` / `Average` で同じ run から取る | 実装済み。**照合は未実施** |
+| P1 idle-gap の物理接続 | ワーカー 1 本・接続 1 本の対照(`ctl1-*`)と、`db.Conn` で専有する条件(`ded6-*`)に作り直した。共有プールの複数ワーカーの条件は、使わない | 実装済み(未実行) |
+| P2 `time.After` の間隔 | 各クエリの実際の開始・終了を記録し、`actual_idle_before_query_s_p50` と `actual_start_interval_s_p50` を出す | 実装済み(未実行) |
+| P1 成功分だけの p99 | `p50_success_ms` / `p99_success_ms` と、`offered / launched / dropped / ok / timeouts / errors`、期限内成功率 `within_slo_pct`(全提示数が分母)を並べる | 実装済み(未実行)。**現在の §5・§6 の p99 は、成功分だけ** |
+| P2 inflight の原子性、生成器の遅れ | 前提をコメントに明記。`issue_lag_p99_ms` / `issue_lag_max_ms` を記録 | 実装済み(未実行) |
+| P1 stampede のピーク | 「再接続が最大の秒」と「p99 が最悪の秒」を別に出し、各秒の標本数、再接続が多い上位 3 秒を記録。`lifetime=0` の対照を追加 | 実装済み(未実行) |
+| P2 `floor=100` | run の `meta.json` に `condition`(warm-proxy / settled)を保存し、集計に列を追加。混ぜて比べない | 実装済み(未検証) |
+| P2 `Questions` | `db_questions_per_s_all_sessions`(DB 全体のカウンタ)に改名し、アプリの `offered` / `ok` と別の系列と明記 | 実装済み |
+| P2 `by_cpu = vCPU × k` | `docs/rules.md` で、確定した式ではなく仮説と明記し、5 つの量を同じ時刻軸で測る方針を記載 | 記載済み |
+| P1 proxy 設定の復元 | `try/finally` で復元し、失敗は実験の失敗にする | 実装済み(未検証) |
+| P1 必須観測(os_cpu) | 実験定義に `required_metrics` を追加。1 秒 CPU の欠損は、無効な run になり、削除前の証拠の不足になる。`exp.py recollect` で再収集できる | 実装済み(未検証) |
+| P1 `make push` の原子性 | 新しいディレクトリで、展開・ビルド・`exp.py check` を行い、成功したときだけ入れ替える。実験の実行中は拒否。run ごとに、Git の版とバイナリの sha256 を記録 | 実装済み(未検証) |
+| P1 再実行時の版管理 | run ごとに `manifest` のハッシュを持ち、一致しない既存の run は `_superseded/` に残して再実行する | 実装済み(未検証) |
+| P1 `patterns_summary` の無効データ | 有効な run だけを集計し、無効な run は別に一覧 | 実装済み |
+| P1 メトリクス欠損のチェック | 実験ごとの `required_metrics` で検証 | 実装済み |
+| P1 キャンペーンの状態 | `done_with_failures` をキャンペーンにも伝え、`finish.py` が失敗を報告する | 実装済み |
+
+**未検証が多い理由**: AWS のスタックは、レビューの前に削除を始めていた。新しい実装は、`make check` と、ローカルの MySQL での一部の確認(`idle-gap` の `dedicated` の動作は未確認)だけで、AWS での実行は、まだ行っていない。

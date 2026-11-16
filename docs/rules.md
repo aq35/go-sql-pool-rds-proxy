@@ -3,6 +3,8 @@
 入力(インフラとアプリの構成)から、`SetMaxOpenConns` / `SetMaxIdleConns` / `SetConnMaxLifetime` / `SetConnMaxIdleTime` を**決まった式で**出す。
 式は `lab/rules.py`(`make rules ARGS='...'`)。係数は実測から `scripts/derive_coeffs.py` が `lab/coeffs.json` に出す。**測っていない係数は「default/guess」と表示される。**
 
+> **この式は「確定した公式」ではなく、「検証していく仮説」です。** 特に `by_cpu = vCPU × k` は、「CPU 負荷の高い SQL で観測した、同時実行の膝」を、そのまま `MaxOpenConns` に写しています。しかし、接続の数には、SQL を実行している間だけでなく、**トランザクション中の待機や、アイドルの接続**も含まれます(実行中の SQL 数 ≠ 接続数)。式を確定する前に、同じ時刻軸で、次の 5 つを並べて測り、どの量が、どれだけ違うのかを調べます: **実行中の SQL 数(Aurora の `Threads_running`)/ Go の `InUse` / Go の `Idle` / Proxy の `DatabaseConnectionsCurrentlyBorrowed` / Proxy の `DatabaseConnections`**(統計の取り方は [metrics.md](metrics.md))。
+
 **状態: k だけ実測済み(2.0)。α・β・γ・δ は未測定(default/guess)。** `make campaign`(測定)→ `make derive`(係数)→ `make validation-gen` + `make campaign CAMPAIGN=day2`(検証)で確定する。
 
 ## 入力

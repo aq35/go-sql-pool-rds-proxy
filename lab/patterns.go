@@ -73,6 +73,8 @@ func newPatDB(t target, o poolOpts, mutate func(*mysql.Config)) (*sql.DB, *count
 
 // sideStats records, for the whole run and in every mode: Aurora-side Threads_running / Threads_connected / Questions per second
 // (straight from Aurora, bypassing the Proxy) and the load generator's own CPU. One PATTERN-AURORA line at the end.
+// NOTE: Questions counts every statement of every session on the instance (the monitoring queries and other sessions included); it is
+// NOT the application's QPS. Compare it with the application's own counters (offered / ok), do not substitute one for the other.
 type sideStats struct {
 	stop, done               chan struct{}
 	thrRunMax, thrConnMax, n int
@@ -163,7 +165,7 @@ func (s *sideStats) report() {
 	if s.cpuN > 0 {
 		cpuAvg = s.cpuSum / float64(s.cpuN)
 	}
-	log.Printf("PATTERN-AURORA threads_running_max=%d threads_running_avg=%.2f threads_connected_max=%d aurora_questions_per_s=%.0f client_cpu_avg=%.1f client_cpu_max=%.1f",
+	log.Printf("PATTERN-AURORA threads_running_max=%d threads_running_avg=%.2f threads_connected_max=%d db_questions_per_s_all_sessions=%.0f client_cpu_avg=%.1f client_cpu_max=%.1f",
 		s.thrRunMax, runAvg, s.thrConnMax, qps, cpuAvg, s.cpuMax)
 }
 
@@ -305,9 +307,26 @@ func (p *auroraPoller) finish() (runMax int, runAvg float64, thrMax int) {
 // openLoop starts requests at Poisson arrivals (rate rps) regardless of how slowly earlier ones finish. Latency is counted from
 // the scheduled arrival, so queueing is not hidden. Requests beyond maxInflight are dropped and counted.
 type olResult struct {
-	lat                                []time.Duration
-	offered, ok, timeouts, errs, drops int64
-	errSample                          string
+	lat                                          []time.Duration // SUCCESSFUL requests only (a timed-out request has no latency here)
+	lags                                         []time.Duration // scheduled arrival -> the moment the generator issued it (generator delay)
+	offered, launched, ok, timeouts, errs, drops int64
+	withinSLO                                    int64
+	errSample                                    string
+}
+
+var patSLO = 100 * time.Millisecond // a request counts as "good" if it succeeded within this time
+
+// olFields is the common block of result fields. p50/p99 are over successful requests only; within_slo_pct is over ALL offered
+// requests (dropped, timed out and failed ones count as bad), so a short timeout cannot make the tail look better by failing more.
+func olFields(res olResult) []any {
+	pct := 0.0
+	if res.offered > 0 {
+		pct = 100 * float64(res.withinSLO) / float64(res.offered)
+	}
+	return []any{"offered", res.offered, "launched", res.launched, "dropped", res.drops, "ok", res.ok, "timeouts", res.timeouts, "errors", res.errs,
+		"slo_ms", ms(patSLO), "within_slo_pct", pct,
+		"p50_success_ms", ms(quantile(res.lat, 0.5)), "p99_success_ms", ms(quantile(res.lat, 0.99)),
+		"issue_lag_p99_ms", ms(quantile(res.lags, 0.99)), "issue_lag_max_ms", ms(quantile(res.lags, 1))}
 }
 
 func openLoop(ctx context.Context, rps float64, warmup, measure time.Duration, maxInflight int, do func(ctx context.Context, r *rand.Rand) error) olResult {
@@ -319,6 +338,8 @@ func openLoop(ctx context.Context, rps float64, warmup, measure time.Duration, m
 	measureFrom, end := start.Add(warmup), start.Add(warmup+measure)
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	next := start
+	// This loop is the ONLY place that decides to launch, so the check below and inflight.Add(1) cannot race. If more than one
+	// goroutine ever generates arrivals, replace the counter with a channel semaphore.
 	for ctx.Err() == nil {
 		next = next.Add(time.Duration(rnd.ExpFloat64() / rps * float64(time.Second)))
 		if next.After(end) {
@@ -329,12 +350,16 @@ func openLoop(ctx context.Context, rps float64, warmup, measure time.Duration, m
 		measured := !arrival.Before(measureFrom)
 		if measured {
 			res.offered++
+			res.lags = append(res.lags, time.Since(arrival)) // the generator's own delay; large values mean the load was not what we asked for
 		}
 		if int(inflight.Load()) >= maxInflight {
 			if measured {
 				res.drops++
 			}
 			continue
+		}
+		if measured {
+			res.launched++
 		}
 		inflight.Add(1)
 		wg.Add(1)
@@ -353,6 +378,9 @@ func openLoop(ctx context.Context, rps float64, warmup, measure time.Duration, m
 			case err == nil:
 				res.ok++
 				res.lat = append(res.lat, d)
+				if d <= patSLO {
+					res.withinSLO++
+				}
 			case errors.Is(err, context.DeadlineExceeded):
 				res.timeouts++
 			default:
@@ -408,11 +436,13 @@ func runPatternsCmd(args []string) error {
 	maxOpen := fs.String("max-open", "20", "pool MaxOpenConns (gorm-pool: comma list)")
 	timeout := fs.Duration("timeout", 0, "timeout-cascade: per-query context timeout (0 = none)")
 	measure := fs.Duration("measure", 90*time.Second, "serial-parallel / timeout-cascade: measured time after a 15 s warm-up")
+	slo := fs.Duration("slo", 100*time.Millisecond, "serial-parallel / timeout-cascade: a request is good if it succeeds within this time (within_slo_pct is over all offered requests)")
 	maxInflight := fs.Int("max-inflight", 600, "open-loop: requests in flight above which new arrivals are dropped")
 	lifetime := fs.Duration("lifetime", 60*time.Second, "stampede: ConnMaxLifetime")
 	think := fs.Duration("think", 50*time.Millisecond, "pin-patterns / stampede: pause between queries per worker")
 	gap := fs.Duration("gap", 30*time.Second, "idle-gap: pause between queries of one worker")
 	idleTime := fs.Duration("idle-time", 0, "idle-gap: SetConnMaxIdleTime (0 = none)")
+	dedicated := fs.Bool("dedicated", false, "idle-gap: every worker owns one db.Conn (idle time of each connection = its own gap)")
 	wquery := fs.String("query", "select1", "warmup: select1 | pk (a primary-key lookup on cap_items)")
 	_ = fs.Parse(args)
 
@@ -423,6 +453,7 @@ func runPatternsCmd(args []string) error {
 		}
 		os.Setenv("DB_HOST", ip)
 	}
+	patSLO = *slo
 	t := targetFromEnv()
 	ctx, cancel := runContext(cf.duration)
 	defer cancel()
@@ -442,7 +473,7 @@ func runPatternsCmd(args []string) error {
 		}
 		return patWarmup(ctx, t, *tlsF, *conns, *trials, *pause, *warm, *wquery, *rows)
 	case "idle-gap":
-		return patIdleGap(ctx, t, *tlsF, *conns, *gap, *idleTime, cf.duration)
+		return patIdleGap(ctx, t, *tlsF, *conns, *gap, *idleTime, cf.duration, *dedicated)
 	case "serial-parallel", "timeout-cascade":
 		if err := capSetup(ctx, t, *rows); err != nil {
 			return fmt.Errorf("setup: %w", err)
@@ -607,11 +638,11 @@ func patSerialParallel(ctx context.Context, db *sql.DB, cc *countConnector, pick
 	if c1t > c0t {
 		cpu = 100 * (1 - float64(c1i-c0i)/float64(c1t-c0t))
 	}
-	result("mode", "serial-parallel", "variant", variant, "rps", rps, "queries_per_request", k, "max_open", maxOpen, "mix", mix,
-		"offered", res.offered, "ok", res.ok, "timeouts", res.timeouts, "errors", res.errs, "dropped", res.drops,
-		"p50_ms", ms(quantile(res.lat, 0.5)), "p95_ms", ms(quantile(res.lat, 0.95)), "p99_ms", ms(quantile(res.lat, 0.99)),
-		"wait_count", s1.WaitCount-s0.WaitCount, "wait_total_ms", ms(s1.WaitDuration-s0.WaitDuration), "max_in_use", inuse,
+	kv := []any{"mode", "serial-parallel", "variant", variant, "rps", rps, "queries_per_request", k, "max_open", maxOpen, "mix", mix}
+	kv = append(kv, olFields(res)...)
+	kv = append(kv, "wait_count", s1.WaitCount-s0.WaitCount, "wait_total_ms_all_waiters", ms(s1.WaitDuration-s0.WaitDuration), "max_in_use", inuse,
 		"connects", cc.n.Load(), "client_cpu", cpu, "err_sample", res.errSample)
+	result(kv...)
 	return nil
 }
 
@@ -631,10 +662,11 @@ func patTimeout(ctx context.Context, db *sql.DB, cc *countConnector, pick func(*
 	res := openLoop(ctx, rps, 15*time.Second, measure, maxInflight, do)
 	runMax, runAvg, thrMax := poll.finish()
 	good := float64(res.ok) / measure.Seconds()
-	result("mode", "timeout-cascade", "timeout_ms", ms(timeout), "rps", rps, "max_open", maxOpen, "mix", mix, "offered", res.offered,
-		"ok", res.ok, "timeouts", res.timeouts, "errors", res.errs, "dropped", res.drops, "goodput_qps", good,
-		"p50_ms", ms(quantile(res.lat, 0.5)), "p99_ms", ms(quantile(res.lat, 0.99)), "new_connections", cc.n.Load()-c0,
+	kv := []any{"mode", "timeout-cascade", "timeout_ms", ms(timeout), "rps", rps, "max_open", maxOpen, "mix", mix}
+	kv = append(kv, olFields(res)...)
+	kv = append(kv, "goodput_qps", good, "new_connections", cc.n.Load()-c0,
 		"aurora_running_max", runMax, "aurora_running_avg", runAvg, "aurora_threads_max", thrMax, "err_sample", res.errSample)
+	result(kv...)
 	return nil
 }
 
@@ -950,7 +982,11 @@ func patStampede(ctx context.Context, t target, tlsF, variant string, n int, lif
 		b := int(s.at.Seconds())
 		buckets[b] = append(buckets[b], s.lat)
 	}
-	steady := int(lifetime.Seconds()) + 5 // both variants are at full load only after one lifetime: compare from here on
+	base := lifetime
+	if base < 60*time.Second { // lifetime=0 (control: no time-based expiry) uses the same window as the 60 s runs
+		base = 60 * time.Second
+	}
+	steady := int(base.Seconds()) + 5 // both variants are at full load only after one lifetime: compare from here on
 	peakConn, peakConnAt := int64(0), 0
 	peakP99, peakP99At := time.Duration(0), 0
 	var allLat []time.Duration
@@ -980,7 +1016,27 @@ func patStampede(ctx context.Context, t target, tlsF, variant string, n int, lif
 			log.Printf("PATTERN-SECOND t=%d connects=%d p50_ms=%.2f p99_ms=%.2f max_ms=%.2f n=%d", sec, perSec[sec], ms(quantile(ls, 0.5)), ms(quantile(ls, 0.99)), ms(quantile(ls, 1)), len(ls))
 		}
 	}
-	result("mode", "stampede", "variant", variant, "conns", n, "lifetime_s", lifetime.Seconds(), "queries", len(all), "total_connects", cc.n.Load(),
+	// The second with the most reconnects and the second with the worst p99 are not necessarily the same second: report both, with the
+	// sample count of each, and the three busiest reconnect seconds.
+	type sc struct {
+		sec int
+		c   int64
+	}
+	var secs []sc
+	mu.Lock()
+	for sec, c := range perSec {
+		if sec >= steady {
+			secs = append(secs, sc{sec, c})
+		}
+	}
+	mu.Unlock()
+	sort.Slice(secs, func(i, j int) bool { return secs[i].c > secs[j].c })
+	top := []string{}
+	for i := 0; i < len(secs) && i < 3; i++ {
+		top = append(top, fmt.Sprintf("t%d:c%d/p99=%.0fms/n%d", secs[i].sec, secs[i].c, ms(quantile(buckets[secs[i].sec], 0.99)), len(buckets[secs[i].sec])))
+	}
+	result("mode", "stampede", "variant", variant, "p99_at_peak_connects_ms", ms(quantile(buckets[peakConnAt], 0.99)), "n_at_peak_connects", len(buckets[peakConnAt]),
+		"n_at_peak_p99", len(buckets[peakP99At]), "top3_connect_secs", strings.Join(top, "|"), "conns", n, "lifetime_s", lifetime.Seconds(), "queries", len(all), "total_connects", cc.n.Load(),
 		"steady_from_s", steady, "steady_connects", steadyConn, "peak_connects_per_s", peakConn, "peak_connects_at_s", peakConnAt, "peak_p99_ms", ms(peakP99), "peak_p99_at_s", peakP99At,
 		"steady_p50_ms", ms(quantile(allLat, 0.5)), "steady_p99_ms", ms(quantile(allLat, 0.99)))
 	return nil
@@ -989,16 +1045,25 @@ func patStampede(ctx context.Context, t target, tlsF, variant string, n int, lif
 // ---- idle gap (Proxy IdleClientTimeout vs ConnMaxIdleTime) ------------------------------------------------------------------
 
 // patIdleGap: n workers, each runs one query every `gap`. The Proxy closes client connections idle for IdleClientTimeout (set by the
-// experiment's "proxy" block). Counts, exactly: queries, errors, new connections (a reconnect after the Proxy or Go closed the connection).
-func patIdleGap(ctx context.Context, t target, tlsF string, n int, gap, idleTime, dur time.Duration) error {
+// experiment's "proxy" block).
+//
+// Whose idle time is it? With a shared pool and n > 1, a worker can borrow the connection another worker used a moment ago, so the
+// physical connection's idle time is NOT `gap`. Therefore:
+//   - n == 1 (control): one worker, one connection: the idle time of that connection is exactly gap + query time.
+//   - dedicated: every worker owns one db.Conn for the whole run, so each connection's idle time is that worker's own gap (the pool's
+//     ConnMaxIdleTime does not apply to a checked-out Conn; this isolates what the Proxy does). A dead connection is NOT retried by
+//     database/sql here: the error is counted, then the worker opens a new Conn.
+//
+// The real start/end times of each query are recorded: the interval between queries is gap + the query's own duration, not gap.
+func patIdleGap(ctx context.Context, t target, tlsF string, n int, gap, idleTime, dur time.Duration, dedicated bool) error {
 	db, cc, err := newPatDB(t, poolOpts{maxOpen: n, maxIdle: n, interpolate: true, tls: tlsF, idle: idleTime}, nil)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	var mu sync.Mutex
-	var lat []time.Duration
-	var queries, errs int64
+	var lat, idleBefore, startIv []time.Duration
+	var queries, errs, appReconnects int64
 	errSample := ""
 	end := time.Now().Add(dur - 20*time.Second)
 	var wg sync.WaitGroup
@@ -1007,22 +1072,56 @@ func patIdleGap(ctx context.Context, t target, tlsF string, n int, gap, idleTime
 		go func(w int) {
 			defer wg.Done()
 			time.Sleep(time.Duration(w) * gap / time.Duration(n)) // spread the workers over one gap
+			var conn *sql.Conn
+			if dedicated {
+				if c, err := db.Conn(ctx); err == nil {
+					conn = c
+				}
+				defer func() {
+					if conn != nil {
+						conn.Close()
+					}
+				}()
+			}
+			var lastStart, lastEnd time.Time
 			for time.Now().Before(end) && ctx.Err() == nil {
 				t0 := time.Now()
 				var x int
-				err := db.QueryRowContext(ctx, "SELECT 1").Scan(&x)
-				d := time.Since(t0)
+				var err error
+				if dedicated {
+					if conn == nil {
+						conn, err = db.Conn(ctx)
+					}
+					if err == nil {
+						err = conn.QueryRowContext(ctx, "SELECT 1").Scan(&x)
+					}
+				} else {
+					err = db.QueryRowContext(ctx, "SELECT 1").Scan(&x)
+				}
+				t1 := time.Now()
 				mu.Lock()
 				queries++
+				if !lastEnd.IsZero() {
+					idleBefore = append(idleBefore, t0.Sub(lastEnd)) // time since this worker's previous query ended
+					startIv = append(startIv, t0.Sub(lastStart))
+				}
 				if err != nil {
 					errs++
 					if errSample == "" {
 						errSample = strings.ReplaceAll(err.Error(), " ", "_")
 					}
 				} else {
-					lat = append(lat, d)
+					lat = append(lat, t1.Sub(t0))
 				}
 				mu.Unlock()
+				if err != nil && dedicated && conn != nil { // a dead dedicated connection: replace it, and count that the app had to
+					conn.Close()
+					conn = nil
+					mu.Lock()
+					appReconnects++
+					mu.Unlock()
+				}
+				lastStart, lastEnd = t0, t1
 				select {
 				case <-ctx.Done():
 					return
@@ -1040,8 +1139,9 @@ func patIdleGap(ctx context.Context, t target, tlsF string, n int, gap, idleTime
 			slow++
 		}
 	}
-	result("mode", "idle-gap", "gap_s", gap.Seconds(), "idle_time_s", idleTime.Seconds(), "workers", n, "queries", queries, "errors", errs,
-		"new_connections", cc.n.Load(), "new_conn_per_query", float64(cc.n.Load())/float64(max(queries, 1)),
-		"p50_ms", ms(p50), "p99_ms", ms(quantile(lat, 0.99)), "slow_queries", slow, "idle_time_closed", st.MaxIdleTimeClosed, "err_sample", errSample)
+	result("mode", "idle-gap", "gap_s", gap.Seconds(), "idle_time_s", idleTime.Seconds(), "workers", n, "dedicated", dedicated, "queries", queries, "errors", errs,
+		"new_connections", cc.n.Load(), "new_conn_per_query", float64(cc.n.Load())/float64(max(queries, 1)), "app_reconnects", appReconnects,
+		"actual_idle_before_query_s_p50", quantile(idleBefore, 0.5).Seconds(), "actual_start_interval_s_p50", quantile(startIv, 0.5).Seconds(),
+		"p50_success_ms", ms(p50), "p99_success_ms", ms(quantile(lat, 0.99)), "slow_queries", slow, "idle_time_closed", st.MaxIdleTimeClosed, "err_sample", errSample)
 	return nil
 }

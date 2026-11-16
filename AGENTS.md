@@ -21,7 +21,7 @@
 
 ## キャンペーン(1 日分の実験)
 - `make campaign` で開始し、`make campaign-status` で見る。EC2 上で動くので、手元を閉じてよい。
-- 終わったら `make finish`(取得と summary 生成)。**`DESTROY_AFTER=yes` を付けたときだけ**、全部の確認(完了状態、全 run の保存、メトリクスに欠損なし、summary 生成)が通れば削除する。1 つでも欠ければ削除せず、理由を出す。
+- 終わったら `make finish`(取得と summary 生成)。**`DESTROY_AFTER=yes` を付けたときだけ**、**証拠の回収が完了している**(全 run の保存、`meta.json` / `valid.json`、実験ごとの必須系列 `required_metrics`、1 秒の Aurora CPU を含む)ときに削除する。1 つでも欠ければ削除せず、理由を出す(CPU などの欠損は、削除前に `exp.py recollect` で再収集できる)。**測定が有効だったか(`valid.json`)は別に報告する**: 無効な run(rc≠0、負荷未達、baseline 未達)も証拠として保存し、削除の妨げにはしない。
 - 削除前に、ユーザーが「閉じてよい」と言っているか確認する。言っていなければ `DESTROY_AFTER` を付けない。
 
 ## 流れ(測定 → 係数 → 検証)と、AI を使う範囲

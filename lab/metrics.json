@@ -1,36 +1,60 @@
 {
-  "_comment": "One place for which CloudWatch metrics are collected and with which statistic. Gauges use Maximum; counters use Sum. Namespace AWS/RDS, dimension ProxyName. instance_metrics are AWS/RDS with dimension DBInstanceIdentifier=$WRITER_INSTANCE_ID. cluster_metrics are AWS/RDS with dimension DBClusterIdentifier=$DB_CLUSTER_ID (billed Aurora I/O, Sum over the window).",
+  "_comment": "One place for which CloudWatch metrics are collected and with which statistic. Gauges use Maximum; counters use Sum. Namespace AWS/RDS, dimension ProxyName. instance_metrics are AWS/RDS with dimension DBInstanceIdentifier=$WRITER_INSTANCE_ID. cluster_metrics are AWS/RDS with dimension DBClusterIdentifier=$DB_CLUSTER_ID (billed Aurora I/O, Sum over the window). extra_stats: the same gauge is also fetched with these statistics (stored as <key>__<Stat>). AWS documents Sum as the most useful statistic for the RDS Proxy connection gauges and publishes them per underlying proxy instance, so Maximum alone may see only the busiest instance: compare both before trusting a count (docs/metrics.md).",
   "proxy_name": "rdsproxy-exp",
   "metrics": [
     {
       "key": "client",
       "name": "ClientConnections",
-      "stat": "Maximum"
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
     },
     {
       "key": "dbconn",
       "name": "DatabaseConnections",
-      "stat": "Maximum"
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
     },
     {
       "key": "pinned",
       "name": "DatabaseConnectionsCurrentlySessionPinned",
-      "stat": "Maximum"
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
     },
     {
       "key": "borrowed",
       "name": "DatabaseConnectionsCurrentlyBorrowed",
-      "stat": "Maximum"
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
     },
     {
       "key": "intx",
       "name": "DatabaseConnectionsCurrentlyInTransaction",
-      "stat": "Maximum"
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
     },
     {
       "key": "allowed",
       "name": "MaxDatabaseConnectionsAllowed",
-      "stat": "Maximum"
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
     },
     {
       "key": "created",
@@ -50,7 +74,10 @@
     {
       "key": "borrowlat",
       "name": "DatabaseConnectionsBorrowLatency",
-      "stat": "Maximum"
+      "stat": "Maximum",
+      "extra_stats": [
+        "Average"
+      ]
     }
   ],
   "instance_metrics": [

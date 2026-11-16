@@ -44,5 +44,11 @@
     "--query=pk"
    ]
   }
+ ],
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
  ]
 }

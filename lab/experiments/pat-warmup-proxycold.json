@@ -31,5 +31,11 @@
     "--warm=true"
    ]
   }
+ ],
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
  ]
 }

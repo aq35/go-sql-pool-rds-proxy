@@ -9,13 +9,14 @@
   exp.py proxy-restore                 put the Proxy settings back (experiments with a "proxy" block change IdleClientTimeout etc.)
   exp.py status EXP
   exp.py pack EXP                     tar the results of EXP to out/EXP.tgz
+  exp.py recollect EXP                collect metrics again for runs whose CloudWatch / Enhanced Monitoring data were missing, then re-judge
 
 For every run it (1) waits until Proxy DatabaseConnections is back at the floor, so a run never starts on the
 leftovers of the previous one, (2) runs `run.sh --scenario=... args`, (3) waits `observe_after_s`,
 (4) saves meta.json, client.log and metrics.json (CloudWatch, definitions in metrics.json) in out/EXP/<id>.r<rep>/.
 Repetitions rotate the order of the runs, so a time-of-day effect is not tied to one condition.
 """
-import argparse, datetime as dt, fcntl, json, os, pathlib, re, subprocess, sys, tarfile, time
+import argparse, datetime as dt, fcntl, hashlib, json, os, pathlib, re, shutil, subprocess, sys, tarfile, time
 
 HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE / "out"
@@ -44,12 +45,12 @@ def load_exp(name):
     return json.loads(p.read_text())
 
 
-def cw_series(metric, start, end, instance=False, cluster=False):
+def cw_series(metric, start, end, instance=False, cluster=False, stat=None):
     dim = ({"Name": "DBClusterIdentifier", "Value": os.environ["DB_CLUSTER_ID"]} if cluster
            else {"Name": "DBInstanceIdentifier", "Value": os.environ["WRITER_INSTANCE_ID"]} if instance
            else {"Name": "ProxyName", "Value": METRICS["proxy_name"]})
     q = [{"Id": "a", "MetricStat": {"Metric": {"Namespace": "AWS/RDS", "MetricName": metric["name"],
-          "Dimensions": [dim]}, "Period": 60, "Stat": metric["stat"]}, "ReturnData": True}]
+          "Dimensions": [dim]}, "Period": 60, "Stat": stat or metric["stat"]}, "ReturnData": True}]
     r = subprocess.run(["aws", "cloudwatch", "get-metric-data", "--start-time", iso(start), "--end-time", iso(end),
                         "--metric-data-queries", json.dumps(q), "--scan-by", "TimestampAscending"],
                        capture_output=True, text=True)
@@ -103,6 +104,9 @@ def os_cpu(start, end):
 
 
 def collect(run_dir, start, end):
+    """Save CloudWatch series (definitions in metrics.json) and per-second Aurora OS CPU. Gauges are also fetched with the other
+    statistics (metrics.json "extra_stats"): AWS recommends Sum for the RDS Proxy connection gauges and publishes them per proxy
+    instance, so Maximum may show only the busiest instance. Keys: <key> (the configured stat) and <key>__<Stat>."""
     try:
         pts = os_cpu(start - dt.timedelta(seconds=10), end)
         (run_dir / "os_cpu.json").write_text(json.dumps({"points": pts, "error": None}))
@@ -111,8 +115,10 @@ def collect(run_dir, start, end):
     data = {}
     for kind, group in (("proxy", METRICS["metrics"]), ("instance", METRICS.get("instance_metrics", [])), ("cluster", METRICS.get("cluster_metrics", []))):
         for m in group:
-            try: data[m["key"]] = {"metric": m["name"], "stat": m["stat"], "points": cw_series(m, start, end, kind == "instance", kind == "cluster")}
-            except Exception as e: data[m["key"]] = {"metric": m["name"], "stat": m["stat"], "error": str(e), "points": []}
+            stats = [(m["key"], m["stat"])] + [(f'{m["key"]}__{x}', x) for x in (m.get("extra_stats") or []) if x != m["stat"]]
+            for key, stat in stats:
+                try: data[key] = {"metric": m["name"], "stat": stat, "points": cw_series(m, start, end, kind == "instance", kind == "cluster", stat=stat)}
+                except Exception as e: data[key] = {"metric": m["name"], "stat": stat, "error": str(e), "points": []}
     (run_dir / "metrics.json").write_text(json.dumps({"window": [iso(start), iso(end)], "series": data}))
 
 
@@ -204,8 +210,66 @@ def cmd_run(a):
     run_experiment(a.exp, a.repeat, a.only.split(",") if a.only else None)
 
 
+def sha256_file(p):
+    try: return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
+    except OSError: return None
+
+
+def manifest_of(e, r, cls, version, binary_sha):
+    """Everything that decides what a run measures. A finished run is reused only if this hash is unchanged."""
+    body = {"scenario": e["scenario"], "args": e.get("common", []) + r.get("args", []), "secret": r.get("secret", e.get("secret", "admin")),
+            "proxy": dict(e.get("proxy", {}), **r.get("proxy", {})), "floor": e.get("floor", FLOOR_DEFAULT), "pre_gap_s": e.get("pre_gap_s", 0),
+            "observe_after_s": e.get("observe_after_s", 120), "required_metrics": e.get("required_metrics"), "aurora_class": cls,
+            "git": version, "binary_sha256": binary_sha}
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+
+
+DEFAULT_REQUIRED = ["client", "dbconn", "cpu"]
+
+
+def judge(e, rdir, meta, start, run_end):
+    """Validity of one finished run, separate from "completed" (the `ok` marker). Returns {valid, reasons}. A run that is not valid is
+    kept (an unmet target or a missing series is still an observation) but is not aggregated as a successful measurement."""
+    reasons = []
+    rc = meta["rc"]
+    if rc == 3: reasons.append("target_not_reached")
+    elif rc != 0: reasons.append(f"rc={rc}")
+    if meta["baseline"]["unmet"]: reasons.append("baseline_unmet")
+    try: m = json.loads((rdir / "metrics.json").read_text())["series"]
+    except Exception: m = None
+    for k in e.get("required_metrics", DEFAULT_REQUIRED):
+        if k == "os_cpu":
+            try: o = json.loads((rdir / "os_cpu.json").read_text())
+            except Exception: o = {"points": [], "error": "unreadable"}
+            span = max(1, int((run_end - start).total_seconds()) - 20)
+            n = sum(1 for t, *_ in o.get("points", []) if start + dt.timedelta(seconds=20) <= dt.datetime.fromisoformat(t.replace("Z", "+00:00")) <= run_end)
+            if o.get("error") or not o.get("points"): reasons.append("os_cpu_missing")
+            elif n < 0.8 * span: reasons.append(f"os_cpu_sparse:{n}/{span}")
+        elif m is None or not m.get(k) or m[k].get("error") or not m[k].get("points"):
+            reasons.append(f"metric_missing:{k}")
+    return {"valid": not reasons, "reasons": reasons}
+
+
 def run_experiment(exp, repeat=0, only=None):
-    """Runs the experiment on the CURRENT Aurora class; results go to out/<exp>__<class>/."""
+    """Runs the experiment on the CURRENT Aurora class; results go to out/<exp>__<class>/. Returns {"failed": [...], "invalid": [...]}.
+    Proxy settings changed by a run are always restored (also on errors / Ctrl-C); a failed restore fails the experiment."""
+    res = None
+    try:
+        res = _run_experiment(exp, repeat, only)
+    finally:
+        err = None
+        if RESTORE.exists():
+            try: proxy_restore()
+            except Exception as ex:
+                err = repr(ex); log("PROXY RESTORE FAILED:", err)
+        if err and res is not None: res["failed"].append("proxy-restore:" + err)
+        if err or res is not None:
+            for d in sorted(OUT.glob(f"{exp}__*")):
+                write_status(d, proxy_restore=err or "ok")
+    return res
+
+
+def _run_experiment(exp, repeat=0, only=None):
     e = load_exp(exp)
     guess = [k for k, v in e.get("coeff_sources", {}).items() if str(v).startswith("default")]
     if guess and not os.environ.get("ALLOW_DEFAULT_COEFFS"):
@@ -222,14 +286,23 @@ def run_experiment(exp, repeat=0, only=None):
     (exp_dir / "expected.json").write_text(json.dumps({"runs": sorted(set(prev["runs"]) | {r["id"] for r in runs}),
                                                        "repeat": max(prev["repeat"], repeat)}))
     version = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "unknown"
+    binary_sha = sha256_file(HERE / "lab")
     (exp_dir / "experiment.json").write_text(json.dumps(e, indent=1, ensure_ascii=False))
-    total = len(runs) * repeat; done = 0; failed = []
-    write_status(exp_dir, state="running", total=total, done=0, current=None, failed=[], started=iso(now()))
+    total = len(runs) * repeat; done = 0; failed = []; invalid = []
+    write_status(exp_dir, state="running", total=total, done=0, current=None, failed=[], invalid=[], started=iso(now()))
     for rep in range(1, repeat + 1):
         for r in ordered(runs, rep - 1):
             rid = f"{r['id']}.r{rep}"; rdir = exp_dir / rid
+            mf = manifest_of(e, r, cls, version, binary_sha)
             if (rdir / "ok").exists():
-                done += 1; log("skip", rid, "(done)"); continue
+                old = json.loads((rdir / "meta.json").read_text()) if (rdir / "meta.json").exists() else {}
+                v = json.loads((rdir / "valid.json").read_text()) if (rdir / "valid.json").exists() else {"valid": False, "reasons": ["no valid.json"]}
+                reusable = old.get("manifest") == mf and (v["valid"] or v["reasons"] == ["target_not_reached"])
+                if reusable:
+                    done += 1; log("skip", rid, "(done, same manifest)"); continue
+                dst = exp_dir / "_superseded" / f"{rid}.{int(time.time())}"      # never overwrite evidence: keep the old run next to the new one
+                dst.parent.mkdir(exist_ok=True); shutil.move(str(rdir), str(dst))
+                log("superseded", rid, "->", dst.name, "(manifest changed or run was not valid)")
             rdir.mkdir(exist_ok=True)
             write_status(exp_dir, current=rid, done=done)
             try:
@@ -247,16 +320,38 @@ def run_experiment(exp, repeat=0, only=None):
             run_end = now(); log("run finished", rid, "rc", rc)
             time.sleep(e.get("observe_after_s", 120))
             collect(rdir, start - dt.timedelta(minutes=3), now())
-            (rdir / "meta.json").write_text(json.dumps({
-                "experiment": a.exp, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version,
-                "start": iso(start), "run_end": iso(run_end), "rc": rc, "baseline": base}, indent=1))
+            floor = e.get("floor", FLOOR_DEFAULT)
+            meta = {"experiment": a.exp, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version, "binary_sha256": binary_sha,
+                    "manifest": mf, "start": iso(start), "run_end": iso(run_end), "rc": rc, "baseline": base,
+                    # floor >= 50: the Proxy was NOT waited down to its idle floor, so Proxy->Aurora connections may be left over from the previous run
+                    "condition": "warm-proxy (previous connections may remain)" if floor >= 50 else "settled (Proxy connections at the floor)"}
+            (rdir / "meta.json").write_text(json.dumps(meta, indent=1))
+            j = judge(e, rdir, meta, start, run_end)
+            (rdir / "valid.json").write_text(json.dumps(j))
+            if not j["valid"]: invalid.append(rid + ":" + ",".join(j["reasons"])); log("INVALID", rid, j["reasons"])
             if rc != 0 and rc != 3: failed.append(rid)
-            (rdir / "ok").write_text("")
+            (rdir / "ok").write_text("")                    # "completed": the run finished and its data were saved. Validity is valid.json.
             done += 1
-            write_status(exp_dir, done=done, failed=failed)
-    if RESTORE.exists(): proxy_restore()      # a run changed Proxy settings: always leave the Proxy as we found it
-    write_status(exp_dir, state="done" if not failed else "done_with_failures", current=None, done=done, finished=iso(now()))
-    log("ALL DONE", a.exp, cls)
+            write_status(exp_dir, done=done, failed=failed, invalid=invalid)
+    write_status(exp_dir, state="done" if not (failed or invalid) else "done_with_failures", current=None, done=done, finished=iso(now()))
+    log("ALL DONE", a.exp, cls, "failed:", failed, "invalid:", invalid)
+    return {"failed": failed, "invalid": invalid}
+
+
+def cmd_recollect(a):
+    """Collect again (CloudWatch + Enhanced Monitoring) for the runs of an experiment whose data were missing, then re-judge them."""
+    take_lock()
+    e = load_exp(a.exp)
+    for exp_dir in sorted(OUT.glob(f"{a.exp}__*")):
+        for rdir in sorted(exp_dir.glob("*.r*")):
+            if not (rdir / "meta.json").exists(): continue
+            meta = json.loads((rdir / "meta.json").read_text()); start = dt.datetime.fromisoformat(meta["start"].replace("Z", "+00:00"))
+            end = dt.datetime.fromisoformat(meta["run_end"].replace("Z", "+00:00"))
+            j = json.loads((rdir / "valid.json").read_text()) if (rdir / "valid.json").exists() else {"valid": False, "reasons": ["no valid.json"]}
+            if not any(x.startswith(("metric_missing", "os_cpu")) or x == "no valid.json" for x in j["reasons"]): continue
+            log("recollect", rdir.name)
+            collect(rdir, start - dt.timedelta(minutes=3), end + dt.timedelta(minutes=10))
+            (rdir / "valid.json").write_text(json.dumps(judge(e, rdir, meta, start, end)))
 
 
 def cmd_status(a):
@@ -283,17 +378,20 @@ def cmd_campaign(a):
     take_lock()
     c = json.loads((CAMPAIGNS / f"{a.name}.json").read_text())
     sp = OUT / f"campaign-{a.name}.json"
+    problems = []
     st = {"state": "running", "step": 0, "steps": len(c["steps"]), "started": iso(now()), "error": None}
     sp.write_text(json.dumps(st))
     try:
         for i, step in enumerate(c["steps"]):
             st.update(step=i + 1, current=step, updated=iso(now())); sp.write_text(json.dumps(st))
             if "aurora_class" in step: ensure_class(step["aurora_class"])
-            else: run_experiment(step["exp"], step.get("repeat", 0), step.get("only"))
-        st.update(state="done", finished=iso(now()))
+            else:
+                r = run_experiment(step["exp"], step.get("repeat", 0), step.get("only")) or {"failed": [], "invalid": []}
+                problems += [f'{step["exp"]}:{x}' for x in r["failed"] + r["invalid"]]
+        st.update(state="done" if not problems else "done_with_failures", problems=problems, finished=iso(now()))
     except BaseException as ex:
         st.update(state="failed", error=repr(ex), updated=iso(now())); sp.write_text(json.dumps(st)); raise
-    sp.write_text(json.dumps(st)); log("CAMPAIGN DONE", a.name)
+    sp.write_text(json.dumps(st)); log("CAMPAIGN", st["state"].upper(), a.name, problems)
 
 
 def cmd_campaign_status(a):
@@ -354,9 +452,10 @@ if __name__ == "__main__":
     sp.add_parser("proxy-restore").set_defaults(f=cmd_proxy_restore)
     for n, f in (("campaign", cmd_campaign), ("campaign-status", cmd_campaign_status)):
         s = sp.add_parser(n); s.add_argument("name"); s.set_defaults(f=f)
+    s0 = sp.add_parser("recollect"); s0.add_argument("exp"); s0.set_defaults(f=cmd_recollect)
     for n, f in (("run", cmd_run), ("status", cmd_status), ("pack", cmd_pack)):
         s = sp.add_parser(n); s.add_argument("exp"); s.set_defaults(f=f)
         if n == "run": s.add_argument("--repeat", type=int, default=0); s.add_argument("--only", default="")
     a = ap.parse_args()
-    if a.cmd in ("run", "campaign", "campaign-status", "status", "pack"): load_env(); OUT.mkdir(exist_ok=True)
+    if a.cmd in ("run", "campaign", "campaign-status", "status", "pack", "recollect"): load_env(); OUT.mkdir(exist_ok=True)
     a.f(a)

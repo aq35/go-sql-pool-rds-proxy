@@ -6,7 +6,7 @@
 #   lab.sh campaign NAME          start a campaign (lab/campaigns/NAME.json) detached on the instance
 #   lab.sh campaign-status NAME
 #   lab.sh resize CLASS           change the writer's instance class now (e.g. db.r6g.xlarge) and wait until available
-#   lab.sh push                   copy the current lab/ sources to the instance and rebuild (no redeploy needed)
+#   lab.sh push                   copy the current lab/ to the instance, build and check it in a new directory, then swap it in (atomic; refuses while an experiment runs)
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd); root=$(dirname "$here")
 cmd=${1:?start|status|fetch|push}; exp=${2:-}
@@ -32,6 +32,8 @@ case $cmd in
     git -C "$root" rev-parse --short HEAD > "$root/lab/VERSION"
     b64=$(tar czf - -C "$root" --exclude=lab/lab --exclude=lab/out --exclude=lab/net.env lab | base64 | tr -d '\n')
     [ ${#b64} -lt 90000 ] || { echo "lab/ is ${#b64} chars base64; SSM limit ~97k. Redeploy (make deploy) instead." >&2; exit 1; }
-    ssm "cd ~/lab && find . -mindepth 1 -maxdepth 1 ! -name out ! -name net.env ! -name lab -exec rm -rf {} + && cd ~ && echo $b64 | base64 -d | tar xz && cd lab && chmod +x *.sh exp.py && go build -o lab . && echo PUSHED" ;;
+    # Atomic: unpack + build + `exp.py check` in ~/lab.new; only if all succeed, swap it in (the old tree stays as ~/lab.old).
+    # Refuses to run while an experiment holds ~/lab/out/.lock. out/ (results) and net.env move to the new tree.
+    ssm "set -e; cd ~; if [ -e lab/out/.lock ] && ! flock -n lab/out/.lock true; then echo 'an experiment is running; not pushing' >&2; exit 1; fi; rm -rf lab.new && mkdir lab.new && echo $b64 | base64 -d | tar xz -C lab.new --strip-components=1 && cd lab.new && chmod +x *.sh exp.py && go build -o lab . && python3 -I exp.py check && cd ~ && if [ -d lab/out ]; then mv lab/out lab.new/out; fi; if [ -f lab/net.env ]; then cp lab/net.env lab.new/net.env; fi; rm -rf lab.old; mv lab lab.old; mv lab.new lab; echo PUSHED git=\$(cat lab/VERSION) bin=\$(sha256sum lab/lab | cut -c1-12)" ;;
   *) echo "unknown command $cmd" >&2; exit 2 ;;
 esac

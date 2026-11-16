@@ -2,7 +2,7 @@
  "name": "pat-serial-parallel",
  "question": "1 リクエストが 5 つのクエリを実行するとき、1 本の接続で順に(直列)と、5 本で同時に(並列)では、どちらが速いか。負荷が上がると、逆転するか",
  "hypothesis": "負荷が低いうちは並列のほうが速い。Aurora の CPU が飽和に近づく(2 vCPU の cpu mix で、リクエスト毎秒 70 付近)と、並列は p99 が悪化し、MaxOpenConns が小さい(6)ときは、接続待ち(wait_count)で、直列より悪くなる。CPU 飽和後は、どちらも処理量が増えない。",
- "reading": "同じ max_open と rps で、serial と parallel の p50 / p99 を比べる。逆転する rps と、そのときの Aurora の CPU(summary の cpu 列)と wait_count を読む。dropped が 0 でない run は、限界を超えているので、遅延は参考値。",
+ "reading": "同じ max_open と rps で、serial と parallel の p50 / p99 を比べる。逆転する rps と、そのときの Aurora の CPU(summary の cpu 列)と wait_count を読む。dropped が 0 でない run は、限界を超えているので、遅延は参考値。 p50_success_ms / p99_success_ms は成功したリクエストだけ。within_slo_pct(SLO 100 ms 以内の割合)は、脱落したものも悪い扱いで数えた全体の値。wait_total_ms_all_waiters は、待った全リクエストの待ち時間の合計(実時間ではない)。issue_lag_* は負荷生成器の遅れ。",
  "scenario": "patterns",
  "common": [
   "--mode=serial-parallel",
@@ -110,5 +110,11 @@
     "--max-open=6"
    ]
   }
+ ],
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
  ]
 }

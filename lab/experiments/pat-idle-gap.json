@@ -1,12 +1,11 @@
 {
  "name": "pat-idle-gap",
- "question": "Proxy の IdleClientTimeout(60 秒)を、クエリの間隔が超えたとき、Go はどうなるか(エラーか、透過的な再接続か)。ConnMaxIdleTime を 45 秒にすると、どう変わるか。再接続は、1 クエリあたり何本か",
- "hypothesis": "間隔が 55 秒以下なら、Proxy は切らないので、新規接続はほぼ 0。間隔が 65 秒以上なら、Proxy が接続を切り、Go は透過的に再接続する(エラー 0、新規接続は 1 クエリにつき約 1 本、遅延は増える)。ConnMaxIdleTime=45 秒だと、間隔が 55 秒以上のとき、Go が先に閉じるので、同じく 1 クエリにつき約 1 本の再接続になる。",
- "reading": "gap と idle_time ごとに、new_conn_per_query、errors、p50 / p99、slow_queries を読む。new_conn_per_query が約 1 なら、毎回再接続。エラーが 0 でも new_conn_per_query が約 1 なら、透過的な再接続が起きている(前回の lifecycle-sync で説明できなかった点の確認)。Proxy の IdleClientTimeout は、この実験の間だけ 60 秒に変える(終わると元に戻す)。",
+ "question": "Proxy の IdleClientTimeout(60 秒)を、1 本の接続のアイドル時間が超えたとき、Go はエラーになるか、透過的に再接続するか。再接続は 1 クエリあたり何本か。ConnMaxIdleTime(45 秒)で、どう変わるか",
+ "hypothesis": "1 本の接続のアイドル時間が 60 秒未満(gap 30、55 秒)なら、新規接続はほぼ 0。60 秒を超える(gap 65、90 秒)と、Proxy が接続を切り、プールを使う場合は透過的に再接続する(エラー 0、新規接続は 1 クエリにつき約 1 本)。db.Conn で専用に持つ場合は、database/sql が再試行しないので、切られた接続のクエリはエラーになる(app_reconnects が増える)。ConnMaxIdleTime=45 秒だと、gap 55 秒で、Go が先に閉じるので、1 クエリにつき約 1 本の再接続になる。",
+ "reading": "**物理接続のアイドル時間が分かる条件だけを使う**。ctl1-* は、ワーカー 1 本・接続 1 本(MaxOpen=MaxIdle=1)の対照で、その接続のアイドル時間は gap + クエリ時間。ded6-* は、ワーカー 6 本が、それぞれ db.Conn を専有する(各接続のアイドル時間 = そのワーカーの gap)。プールを共有する複数ワーカーの条件は、接続の再利用で、アイドル時間が gap とは限らないので、この実験では使わない。actual_idle_before_query_s_p50 / actual_start_interval_s_p50 で、実際の間隔が設定どおりか確認する(gap + クエリ時間になる)。new_conn_per_query、errors、app_reconnects、p50 / p99(成功のみ)、slow_queries を、gap と idle_time ごとに読む。Proxy の IdleClientTimeout は、この実験の間だけ 60 秒に変える(終わると元に戻す)。",
  "scenario": "patterns",
  "common": [
   "--mode=idle-gap",
-  "--conns=6",
   "--tls=skip-verify",
   "--duration=8m"
  ],
@@ -18,60 +17,94 @@
  },
  "runs": [
   {
-   "id": "gap30s-idle0",
+   "id": "ctl1-gap30s-idle0",
    "args": [
+    "--conns=1",
     "--gap=30s",
     "--idle-time=0"
    ]
   },
   {
-   "id": "gap55s-idle0",
+   "id": "ctl1-gap55s-idle0",
    "args": [
+    "--conns=1",
     "--gap=55s",
     "--idle-time=0"
    ]
   },
   {
-   "id": "gap65s-idle0",
+   "id": "ctl1-gap65s-idle0",
    "args": [
+    "--conns=1",
     "--gap=65s",
     "--idle-time=0"
    ]
   },
   {
-   "id": "gap90s-idle0",
+   "id": "ctl1-gap90s-idle0",
    "args": [
+    "--conns=1",
     "--gap=90s",
     "--idle-time=0"
    ]
   },
   {
-   "id": "gap30s-idle45s",
+   "id": "ctl1-gap30s-idle45s",
    "args": [
+    "--conns=1",
     "--gap=30s",
     "--idle-time=45s"
    ]
   },
   {
-   "id": "gap55s-idle45s",
+   "id": "ctl1-gap55s-idle45s",
    "args": [
+    "--conns=1",
     "--gap=55s",
     "--idle-time=45s"
    ]
   },
   {
-   "id": "gap65s-idle45s",
+   "id": "ded6-gap30s",
    "args": [
-    "--gap=65s",
-    "--idle-time=45s"
+    "--conns=6",
+    "--dedicated=true",
+    "--gap=30s",
+    "--idle-time=0"
    ]
   },
   {
-   "id": "gap90s-idle45s",
+   "id": "ded6-gap55s",
    "args": [
+    "--conns=6",
+    "--dedicated=true",
+    "--gap=55s",
+    "--idle-time=0"
+   ]
+  },
+  {
+   "id": "ded6-gap65s",
+   "args": [
+    "--conns=6",
+    "--dedicated=true",
+    "--gap=65s",
+    "--idle-time=0"
+   ]
+  },
+  {
+   "id": "ded6-gap90s",
+   "args": [
+    "--conns=6",
+    "--dedicated=true",
     "--gap=90s",
-    "--idle-time=45s"
+    "--idle-time=0"
    ]
   }
+ ],
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
  ]
 }

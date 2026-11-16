@@ -87,5 +87,13 @@
    ]
   }
  ],
- "pre_gap_s": 130
+ "pre_gap_s": 130,
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "pinned",
+  "intx",
+  "os_cpu"
+ ]
 }

@@ -2,7 +2,7 @@
  "name": "pat-timeout",
  "question": "クエリごとのタイムアウトを短くすると、限界付近の負荷で、接続の作り直しとクエリの積み残しが連鎖して、処理量(goodput)が落ちるか。クライアントが切った後も、Aurora でクエリは走り続けるか。長いクエリ(0.5 秒の SLEEP)でも同じか",
  "hypothesis": "限界の 80%(rps=300)では、タイムアウトが短くても、ほぼ影響がない。限界の 120%(rps=460)では、タイムアウトが短いほど、タイムアウトと新規接続が増え、goodput が下がる。クライアントが切断した後も、Aurora 側ではクエリが走り続ける(aurora_running_max がクライアントの同時数より多い)。 長いクエリ(SLEEP 0.5 秒、40 件/秒、タイムアウト 100 ms)では、クライアントの同時数は約 4 に収まるが、Aurora の実行中のクエリ数(aurora_running_*、threads_running)は、タイムアウトなしの約 20 に近いまま残る(切断しても、サーバー側のクエリは走り続ける)。",
- "reading": "rps ごとに、timeout なし(0)と各タイムアウトを比べる。見る列: goodput_qps、timeouts、new_connections、aurora_running_max / avg、Aurora の CPU。goodput が timeout なしより低く、new_connections が増えていれば、連鎖が起きている。 sleep-* の run は、CPU を使わない長いクエリ。aurora_running_avg / threads_running_avg が、sleep-t0 と sleep-t100ms でほぼ同じなら、切断後もサーバーでクエリが走り続けている。CPU(aurora_cpu_*)は Enhanced Monitoring の 1 秒値。",
+ "reading": "rps ごとに、timeout なし(0)と各タイムアウトを比べる。見る列: goodput_qps、timeouts、new_connections、aurora_running_max / avg、aurora_cpu_*(1 秒値)、**within_slo_pct**(期限内に成功した割合。脱落・タイムアウト・失敗を含む、提示した全リクエストが分母)。p50_success_ms / p99_success_ms は**成功したリクエストだけ**の値で、タイムアウトを増やして失敗を増やすと、見かけ上、良くなる。launched / dropped で、負荷が意図どおり出たかを確かめ、issue_lag_p99_ms が大きい run は、負荷生成器の遅れが結果に混ざっている。 sleep-* の run は、CPU を使わない長いクエリ。aurora_running_avg / threads_running_avg が、sleep-t0 と sleep-t100ms でほぼ同じなら、切断後もサーバーでクエリが走り続けている。CPU(aurora_cpu_*)は Enhanced Monitoring の 1 秒値。",
  "scenario": "patterns",
  "common": [
   "--mode=timeout-cascade",
@@ -87,5 +87,11 @@
     "--timeout=100ms"
    ]
   }
+ ],
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
  ]
 }
