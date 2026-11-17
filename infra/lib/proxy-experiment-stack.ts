@@ -7,6 +7,7 @@ import * as sm from 'aws-cdk-lib/aws-secretsmanager';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cw from 'aws-cdk-lib/aws-cloudwatch';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 
 /** Production is Aurora max_connections=1000 / Proxy 80% / idle 10%.  This stack is the 1/10 scale model. */
 const AURORA_MAX_CONNECTIONS = 100;
@@ -161,6 +162,18 @@ export class ProxyExperimentStack extends cdk.Stack {
       managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore')],
     });
     secret.grantRead(role);
+    // The lab sources travel through this bucket (`make push` uploads, the instance downloads): no size limit, and a SHA-256 to verify.
+    // It is NOT mentioned in the instance's user data: changing that would stop/start the instance on an update deploy (and kill a
+    // running campaign). `make push` reads the bucket name from the stack output.
+    const labBucket = new s3.Bucket(this, 'LabSourceBucket', {
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      enforceSSL: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      lifecycleRules: [{ expiration: cdk.Duration.days(7) }],
+    });
+    labBucket.grantRead(role); // read of this bucket only
     appSecret.grantRead(role);
     role.addToPolicy(new iam.PolicyStatement({ actions: ['secretsmanager:RotateSecret'], resources: [appSecret.secretArn] }));
     role.addToPolicy(new iam.PolicyStatement({ actions: ['cloudwatch:GetMetricData'], resources: ['*'] }));
@@ -366,6 +379,7 @@ export class ProxyExperimentStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'WriterInstanceId', { value: writerId });
     new cdk.CfnOutput(this, 'ProxyEndpoint', { value: proxy.endpoint });
     new cdk.CfnOutput(this, 'ProxyName', { value: PROXY_NAME });
+    new cdk.CfnOutput(this, 'LabBucket', { value: labBucket.bucketName, description: 'make push uploads the lab here' });
     new cdk.CfnOutput(this, 'EnvId', { value: envId });
     new cdk.CfnOutput(this, 'RequireTls', { value: String(requireTls) });
     new cdk.CfnOutput(this, 'ProxyAuth', { value: proxyAuth });
