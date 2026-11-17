@@ -2,6 +2,7 @@
 # Usage: ./run.sh --scenario=pool-load [--duration=10m ...]
 #   SECRET=admin (default) | app
 #   TARGET=proxy (default) | cluster   -> which endpoint the client connects to
+#   LAB_BIN=lab (default) | lab-v181   -> which built binary (lab-v181 = the older MySQL driver, for the driver A/B)
 set -euo pipefail
 source /etc/exp.env
 ADMIN_ARN="$SECRET_ARN"
@@ -24,4 +25,4 @@ case "${TARGET:-proxy}" in
 esac
 cd "$(dirname "$0")"
 if [[ " $* " == *" --proxy-az="* ]]; then ./netenv.sh; source net.env; fi   # PROXY_IP_SAME / PROXY_IP_CROSS for --proxy-az
-exec ./lab "$@"
+exec "./${LAB_BIN:-lab}" "$@"

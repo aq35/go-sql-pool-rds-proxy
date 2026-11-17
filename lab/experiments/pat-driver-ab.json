@@ -1,0 +1,167 @@
+{
+ "name": "pat-driver-ab",
+ "question": "MySQL ドライバを v1.8.1(前回の実験)から v1.10.1(今回)に更新したことで、接続の扱い(Proxy に切られた接続への再接続、ピン留め、接続の確立)は変わったか。前回との差が、ドライバの違いか、条件の違いかの切り分け",
+ "hypothesis": "プールと接続の再利用に関する大きな変化は、リリースノートにない。ピン留め(prepare の数)は、ドライバの版によらず同じ。Proxy が切った接続への再接続は、どちらの版も、透過的に行う(エラー 0)。差があるなら、v1.9.0 の「エラー処理の改善」に関係する、閉じた接続の扱いの違い。",
+ "reading": "同じ条件の new(v1.10.1)と old(v1.8.1)を、run id の接尾辞で比べる。idle-gap: new_conn_per_query、errors、app_reconnects、p99。pin: com_stmt_prepare_delta、proxy_pinned_sum。warmup: w1_p50_ms_med。2 回の範囲が重なる差は、結論にしない(pat-control のばらつきも参照)。binary の版は meta.json の go_deps / bin に残る。",
+ "scenario": "patterns",
+ "common": [],
+ "repeat": 2,
+ "floor": 100,
+ "observe_after_s": 60,
+ "runs": [
+  {
+   "id": "ctl1-gap65-new",
+   "bin": "lab",
+   "args": [
+    "--mode=idle-gap",
+    "--conns=1",
+    "--gap=65s",
+    "--idle-time=0",
+    "--duration=8m"
+   ],
+   "proxy": {
+    "IdleClientTimeout": 60
+   }
+  },
+  {
+   "id": "ctl1-gap65-old",
+   "bin": "lab-v181",
+   "args": [
+    "--mode=idle-gap",
+    "--conns=1",
+    "--gap=65s",
+    "--idle-time=0",
+    "--duration=8m"
+   ],
+   "proxy": {
+    "IdleClientTimeout": 60
+   }
+  },
+  {
+   "id": "ded3-gap65-new",
+   "bin": "lab",
+   "args": [
+    "--mode=idle-gap",
+    "--conns=3",
+    "--dedicated=true",
+    "--gap=65s",
+    "--idle-time=0",
+    "--duration=8m"
+   ],
+   "proxy": {
+    "IdleClientTimeout": 60
+   }
+  },
+  {
+   "id": "ded3-gap65-old",
+   "bin": "lab-v181",
+   "args": [
+    "--mode=idle-gap",
+    "--conns=3",
+    "--dedicated=true",
+    "--gap=65s",
+    "--idle-time=0",
+    "--duration=8m"
+   ],
+   "proxy": {
+    "IdleClientTimeout": 60
+   }
+  },
+  {
+   "id": "pin-base-new",
+   "bin": "lab",
+   "args": [
+    "--mode=pin-patterns",
+    "--variant=base",
+    "--conns=10",
+    "--think=50ms",
+    "--duration=200s"
+   ]
+  },
+  {
+   "id": "pin-base-old",
+   "bin": "lab-v181",
+   "args": [
+    "--mode=pin-patterns",
+    "--variant=base",
+    "--conns=10",
+    "--think=50ms",
+    "--duration=200s"
+   ]
+  },
+  {
+   "id": "pin-prep-false-new",
+   "bin": "lab",
+   "args": [
+    "--mode=pin-patterns",
+    "--variant=prep-false",
+    "--conns=10",
+    "--think=50ms",
+    "--duration=200s"
+   ]
+  },
+  {
+   "id": "pin-prep-false-old",
+   "bin": "lab-v181",
+   "args": [
+    "--mode=pin-patterns",
+    "--variant=prep-false",
+    "--conns=10",
+    "--think=50ms",
+    "--duration=200s"
+   ]
+  },
+  {
+   "id": "pin-gorm-prepare-new",
+   "bin": "lab",
+   "args": [
+    "--mode=pin-patterns",
+    "--variant=gorm-prepare",
+    "--conns=10",
+    "--think=50ms",
+    "--duration=200s"
+   ]
+  },
+  {
+   "id": "pin-gorm-prepare-old",
+   "bin": "lab-v181",
+   "args": [
+    "--mode=pin-patterns",
+    "--variant=gorm-prepare",
+    "--conns=10",
+    "--think=50ms",
+    "--duration=200s"
+   ]
+  },
+  {
+   "id": "warmup-cold-new",
+   "bin": "lab",
+   "args": [
+    "--mode=warmup",
+    "--conns=32",
+    "--trials=10",
+    "--pause=15s",
+    "--warm=false",
+    "--duration=15m"
+   ]
+  },
+  {
+   "id": "warmup-cold-old",
+   "bin": "lab-v181",
+   "args": [
+    "--mode=warmup",
+    "--conns=32",
+    "--trials=10",
+    "--pause=15s",
+    "--warm=false",
+    "--duration=15m"
+   ]
+  }
+ ],
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
+ ]
+}

@@ -232,10 +232,10 @@ def cmd_run(a):
     run_experiment(a.exp, a.repeat, a.only.split(",") if a.only else None)
 
 
-def build_info():
+def build_info(binary="lab"):
     """What the running `lab` binary was built with: the Go toolchain and the dependency versions (e.g. the MySQL driver). A different
     driver or Go version can change connection handling, so results must say which one they came from."""
-    r = subprocess.run(["go", "version", "-m", str(HERE / "lab")], capture_output=True, text=True, cwd=HERE)
+    r = subprocess.run(["go", "version", "-m", str(HERE / binary)], capture_output=True, text=True, cwd=HERE)
     lines = r.stdout.splitlines()
     go = lines[0].split(":", 1)[-1].strip() if lines else "unknown"           # "<path>: go1.27.4"
     deps = {}
@@ -257,12 +257,17 @@ def infra_conditions():
     return {"require_tls": g("REQUIRE_TLS"), "proxy_auth": g("PROXY_AUTH"), "env_id": g("ENV_ID"), "proxy_name": proxy_name()}
 
 
+def run_target(e, r): return r.get("target", e.get("target", "proxy"))      # "proxy" | "cluster" (straight to Aurora, no Proxy)
+def run_bin(e, r): return r.get("bin", e.get("bin", "lab"))               # which built binary: "lab" or e.g. "lab-v181" (older MySQL driver)
+
+
 def manifest_of(e, r, cls, version, binary_sha):
     """Everything that decides what a run measures. A finished run is reused only if this hash is unchanged."""
     body = {"scenario": e["scenario"], "args": e.get("common", []) + r.get("args", []), "secret": r.get("secret", e.get("secret", "admin")),
             "proxy": dict(e.get("proxy", {}), **r.get("proxy", {})), "floor": e.get("floor", FLOOR_DEFAULT), "pre_gap_s": e.get("pre_gap_s", 0),
             "observe_after_s": e.get("observe_after_s", 120), "required_metrics": e.get("required_metrics"), "aurora_class": cls,
-            "git": version, "binary_sha256": binary_sha, "infra": infra_conditions()}
+            "git": version, "binary_sha256": binary_sha, "infra": infra_conditions(),
+            "target": run_target(e, r), "bin": run_bin(e, r)}
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
@@ -384,15 +389,16 @@ def _run_experiment(exp, repeat=0, only=None):
             base = wait_baseline(e.get("floor", FLOOR_DEFAULT))
             args = [f"--scenario={e['scenario']}"] + e.get("common", []) + r.get("args", [])
             start = now(); log("START", rid, " ".join(args))
-            env = dict(os.environ, SECRET=r.get("secret", e.get("secret", "admin")))
+            env = dict(os.environ, SECRET=r.get("secret", e.get("secret", "admin")), TARGET=run_target(e, r))
+            if run_bin(e, r) != "lab": env["LAB_BIN"] = run_bin(e, r)
             with open(rdir / "client.log", "w") as f:
                 rc = subprocess.run([str(HERE / "run.sh")] + args, stdout=f, stderr=subprocess.STDOUT, env=env, cwd=HERE).returncode
             run_end = now(); log("run finished", rid, "rc", rc)
             time.sleep(e.get("observe_after_s", 120))
             collect(rdir, start - dt.timedelta(minutes=3), now())
             floor = e.get("floor", FLOOR_DEFAULT)
-            go_ver, deps = build_info()
-            meta = {"experiment": a.exp, "go_version": go_ver, "go_deps": deps, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version, "binary_sha256": binary_sha,
+            go_ver, deps = build_info(run_bin(e, r))
+            meta = {"experiment": a.exp, "target": run_target(e, r), "bin": run_bin(e, r), "go_version": go_ver, "go_deps": deps, "aurora_class": cls, "run_id": r["id"], "rep": rep, "args": args, "git": version, "binary_sha256": binary_sha,
                     "manifest": mf, "start": iso(start), "run_end": iso(run_end), "rc": rc, "baseline": base,
                     "infra": infra_conditions(), "proxy_settings": proxy_read()[0],     # what the Proxy was set to while this run executed
                     # floor >= 50: the Proxy was NOT waited down to its idle floor, so Proxy->Aurora connections may be left over from the previous run

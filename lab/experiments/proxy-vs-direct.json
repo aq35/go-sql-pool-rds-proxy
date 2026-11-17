@@ -1,0 +1,56 @@
+{
+ "name": "proxy-vs-direct",
+ "question": "Proxy を経由すると、直結(Aurora に直接)に比べて、遅延はどれだけ増えるか。クライアント接続が多く、各接続の使用が少ないとき、Proxy は、Aurora の接続数を、どれだけ減らすか(多重化の効果)",
+ "hypothesis": "Proxy 経由は、直結より、平均で、数 ms 遅い(1 ホップ分)。接続あたりの使用が少ない(各ワーカーが 500 ms に 1 回、5 ms のクエリ)負荷では、Proxy の裏の接続数(DatabaseConnections の Sum)は、クライアント接続数(30、60)より、はるかに少ない(多重化)。直結では、Aurora の接続数は、クライアント接続数に等しい。",
+ "reading": "proxy-N と cluster-N を、同じ N で比べる。遅延: hold_avg_ms、hold_p99_ms。接続数: Proxy 経由は proxy_dbconn_sum(Proxy→Aurora)と client_sum。直結は、Aurora 側の接続数(summary の aurora_conn、または threads_connected_max)。max_connections=100 なので、N=60 の直結は、上限の 60% を使う。直結の run は、Proxy の指標(client / dbconn)が 0 になるので、required_metrics に含めない。",
+ "scenario": "pool-load",
+ "common": [
+  "--duration=6m",
+  "--containers=3",
+  "--hold=5ms",
+  "--query-every=500ms",
+  "--lifetime=15m",
+  "--rotate-every=24h",
+  "--interpolate=true",
+  "--lock-mode=none"
+ ],
+ "repeat": 2,
+ "observe_after_s": 60,
+ "required_metrics": [
+  "cpu"
+ ],
+ "runs": [
+  {
+   "id": "proxy-30",
+   "target": "proxy",
+   "args": [
+    "--total-conns=30",
+    "--workers-per-pool=10"
+   ]
+  },
+  {
+   "id": "proxy-60",
+   "target": "proxy",
+   "args": [
+    "--total-conns=60",
+    "--workers-per-pool=20"
+   ]
+  },
+  {
+   "id": "cluster-30",
+   "target": "cluster",
+   "args": [
+    "--total-conns=30",
+    "--workers-per-pool=10"
+   ]
+  },
+  {
+   "id": "cluster-60",
+   "target": "cluster",
+   "args": [
+    "--total-conns=60",
+    "--workers-per-pool=20"
+   ]
+  }
+ ]
+}

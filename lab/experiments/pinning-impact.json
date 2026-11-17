@@ -1,8 +1,8 @@
 {
  "name": "pinning-impact",
- "question": "ピン留めされた接続(ロック保持)が増えると、Proxy の接続プールが枯渇して、待ち・エラー・遅延が出始めるのは、Proxy の上限(max_connections × MaxConnectionsPercent)の何割からか(安全係数 α)",
- "hypothesis": "通常クエリ用の接続とピン留めの合計が、Proxy の上限に近づくと、借用待ち(BorrowLatency)と p99 が悪化し、上限を超えるとタイムアウトのエラーが出る。ピン留めの割合が約 0.8 を超えると劣化する。",
- "reading": "run ごとに、(ロック保持数 × コンテナ数) と (Proxy の上限) の比を横軸に、p99・borrow latency・エラー数を見る。Status が OK のまま最大になる比が α の候補。pin_ratio = Pinned max / MaxDatabaseConnectionsAllowed。",
+ "question": "ピン留めされた接続(ロック保持)が増えると、Proxy の接続プールが枯渇して、待ち・エラー・遅延が出始めるのは、Proxy の上限(max_connections × MaxConnectionsPercent)の何割からか(安全係数 α)。(上限 80 を超える水準 h25=75 本、h30=90 本を足した: 超えたとき、新しいクライアントは、待たされるか、エラーになるか、BorrowTimeout 30 秒までに何が起きるか)",
+ "hypothesis": "保持接続(ロック専用、ピン留め)の合計が、Proxy の上限(max_connections 100 × MaxConnectionsPercent 80% = 80)の近くまで増えると、通常のワーカー(36 本、ピン留めなし)が使える Aurora 接続が減り、待ち(wait_count)、遅延(p99)、借用の遅延(borrowlat)が悪化し始める。上限を超える水準(h30: 合計 90)では、ロックを取れない接続や、借用のタイムアウトのエラーが出る。悪化し始める水準が、ルールの係数 α(ピン留めに使ってよい割合)。",
+ "reading": "run(h0〜h30)ごとに、proxy_pinned_sum(ピン留めの合計。ロック専用は 3 コンテナ × holders)、proxy_dbconn_sum、hold_avg_ms / hold_p99_ms、wait_count、errors(summary の Status)、borrowlat を並べる。h0 が対照。悪化が始まる最小の水準の、ピン留めの合計 ÷ 80 が α の候補。1 水準 1 回なので、水準間の差が揺らぎの範囲か、pat-control のばらつきと比べる。",
  "scenario": "pool-load",
  "common": [
   "--duration=5m",
@@ -16,8 +16,8 @@
   "--interpolate=true",
   "--lock-mode=none"
  ],
- "repeat": 2,
- "observe_after_s": 360,
+ "repeat": 1,
+ "observe_after_s": 60,
  "runs": [
   {
    "id": "h0",
@@ -47,6 +47,18 @@
    "id": "h20",
    "args": [
     "--lock-holders=20"
+   ]
+  },
+  {
+   "id": "h25",
+   "args": [
+    "--lock-holders=25"
+   ]
+  },
+  {
+   "id": "h30",
+   "args": [
+    "--lock-holders=30"
    ]
   }
  ]
