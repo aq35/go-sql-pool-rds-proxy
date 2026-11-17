@@ -102,6 +102,38 @@ class Deferred(unittest.TestCase):
         self.assertTrue(exp.PENDING.startswith("metric_missing"))
 
 
+class Recollect(unittest.TestCase):
+    """recollect_experiment with force collects every run, without force only the ones whose series were found missing."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = pathlib.Path(self.tmp.name)
+        d = self.out / "demo__db.r6g.large"
+        for rid, valid in (("a.r1", True), ("b.r1", False)):
+            r = d / rid
+            r.mkdir(parents=True)
+            (r / "meta.json").write_text(json.dumps({"start": "2026-11-16T00:00:00Z", "run_end": "2026-11-16T00:01:00Z", "rc": 0, "baseline": {"unmet": False}}))
+            (r / "valid.json").write_text(json.dumps({"valid": valid, "reasons": [] if valid else ["metric_missing:cpu"]}))
+        self.collected = []
+        self.saved = (exp.OUT, exp.load_exp, exp.collect, exp.judge)
+        exp.OUT = self.out
+        exp.load_exp = lambda name: {"name": name}
+        exp.collect = lambda rdir, start, end: self.collected.append(rdir.name)
+        exp.judge = lambda e, rdir, meta, start, end: {"valid": True, "reasons": []}
+
+    def tearDown(self):
+        exp.OUT, exp.load_exp, exp.collect, exp.judge = self.saved
+        self.tmp.cleanup()
+
+    def test_without_force_only_the_missing_run_is_collected(self):
+        self.assertEqual(exp.recollect_experiment("demo"), [])
+        self.assertEqual(self.collected, ["b.r1"])
+
+    def test_with_force_every_run_is_collected(self):
+        self.assertEqual(exp.recollect_experiment("demo", force=True), [])
+        self.assertEqual(sorted(self.collected), ["a.r1", "b.r1"])
+
+
 class Baseline(unittest.TestCase):
     def test_idle_pool_is_not_a_leftover(self):
         # An used Proxy keeps its idle pool (MaxIdleConnectionsPercent 10% of max_connections 100 = 10, 5 per node) for hours with no

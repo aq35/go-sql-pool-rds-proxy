@@ -9,7 +9,7 @@
   exp.py proxy-restore                 put the Proxy settings back (experiments with a "proxy" block change IdleClientTimeout etc.)
   exp.py status EXP
   exp.py pack EXP                     tar the results of EXP to out/EXP.tgz
-  exp.py recollect EXP                collect metrics again for runs whose CloudWatch / Enhanced Monitoring data were missing, then re-judge
+  exp.py recollect EXP [--force]      collect metrics again (only runs found missing; --force: every run), then re-judge
 
 For every run it (1) waits until Proxy DatabaseConnections is back at the floor, so a run never starts on the
 leftovers of the previous one, (2) runs `run.sh --scenario=... args`, (3) waits `observe_after_s`,
@@ -430,9 +430,11 @@ def _run_experiment(exp, repeat=0, only=None):
     return {"failed": failed, "invalid": invalid}
 
 
-def recollect_experiment(exp_name):
-    """Collect again (CloudWatch + Enhanced Monitoring) for the runs of an experiment whose data were missing or are pending, then re-judge
-    them. Returns the invalid run ids that remain ("<run>:<reasons>")."""
+def recollect_experiment(exp_name, force=False):
+    """Collect again (CloudWatch + Enhanced Monitoring) for the runs of an experiment, then re-judge them. Returns the invalid run ids that
+    remain ("<run>:<reasons>"). Without `force` only runs whose series were found missing are collected. WITH `force` every run is: needed
+    for collect_later experiments, because a run's own 1-minute CloudWatch points are not there yet when it ends, yet its series are not
+    empty (the window starts 3 minutes before the run and holds the previous run's points), so a missing tail is not detected as missing."""
     e = load_exp(exp_name)
     remaining = []
     for exp_dir in sorted(OUT.glob(f"{exp_name}__*")):
@@ -441,7 +443,7 @@ def recollect_experiment(exp_name):
             meta = json.loads((rdir / "meta.json").read_text()); start = dt.datetime.fromisoformat(meta["start"].replace("Z", "+00:00"))
             end = dt.datetime.fromisoformat(meta["run_end"].replace("Z", "+00:00"))
             j = json.loads((rdir / "valid.json").read_text()) if (rdir / "valid.json").exists() else {"valid": False, "reasons": ["no valid.json"]}
-            if any(x.startswith(("metric_missing", "os_cpu")) or x == "no valid.json" for x in j["reasons"]):
+            if force or any(x.startswith(("metric_missing", "os_cpu")) or x == "no valid.json" for x in j["reasons"]):
                 log("recollect", rdir.name)
                 collect(rdir, start - dt.timedelta(minutes=3), end + dt.timedelta(minutes=10))
                 j = judge(e, rdir, meta, start, end)
@@ -452,7 +454,7 @@ def recollect_experiment(exp_name):
 
 def cmd_recollect(a):
     take_lock()
-    left = recollect_experiment(a.exp)
+    left = recollect_experiment(a.exp, force=a.force)
     log("recollect done;", len(left), "run(s) still invalid", left)
 
 
@@ -492,7 +494,7 @@ def cmd_campaign(a):
                 if load_exp(step["exp"]).get("collect_later"):
                     log("collect_later:", step["exp"], "- waiting 150 s once for CloudWatch, then collecting every run of the experiment")
                     time.sleep(150)
-                    left = recollect_experiment(step["exp"])
+                    left = recollect_experiment(step["exp"], force=True)
                     r = {"failed": r["failed"], "invalid": left}
                 problems += [f'{step["exp"]}:{x}' for x in r["failed"] + r["invalid"]]
         st.update(state="done" if not problems else "done_with_failures", problems=problems, finished=iso(now()))
@@ -559,7 +561,7 @@ if __name__ == "__main__":
     sp.add_parser("proxy-restore").set_defaults(f=cmd_proxy_restore)
     for n, f in (("campaign", cmd_campaign), ("campaign-status", cmd_campaign_status)):
         s = sp.add_parser(n); s.add_argument("name"); s.set_defaults(f=f)
-    s0 = sp.add_parser("recollect"); s0.add_argument("exp"); s0.set_defaults(f=cmd_recollect)
+    s0 = sp.add_parser("recollect"); s0.add_argument("exp"); s0.add_argument("--force", action="store_true", help="collect every run again, not only the ones found missing"); s0.set_defaults(f=cmd_recollect)
     for n, f in (("run", cmd_run), ("status", cmd_status), ("pack", cmd_pack)):
         s = sp.add_parser(n); s.add_argument("exp"); s.set_defaults(f=f)
         if n == "run": s.add_argument("--repeat", type=int, default=0); s.add_argument("--only", default="")
