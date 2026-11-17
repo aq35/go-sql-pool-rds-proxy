@@ -28,7 +28,6 @@
    "repeat": 2,
    "only": [
     "idle0",
-    "idle2",
     "idle5",
     "idle10"
    ]

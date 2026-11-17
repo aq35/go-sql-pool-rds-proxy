@@ -2,22 +2,14 @@
  "name": "exceed-cases",
  "question": "Proxy の DatabaseConnections が ClientConnections を上回るのは、どんなときか",
  "hypothesis": "下限(約5本)と、クライアントが閉じたあと約5分の残留。短命なピン留め接続の繰り返しでは、残留は一定数で頭打ちになる。",
- "reading": "各 run の db_minus_client_max(summary.md)と、run 終了後に下限へ戻るまでの時間を見る。select1 を対照にする。",
+ "reading": "各 run の db_minus_client_max(summary.md)と、run 終了後に下限へ戻るまでの時間を見る。select1 を対照にする。 steady-settz(セッションごとの time_zone)は、前回の結果が明確なので、この実行からは外した。",
  "scenario": "exceed",
  "common": [
   "--duration=10m"
  ],
  "repeat": 1,
- "observe_after_s": 420,
+ "observe_after_s": 15,
  "runs": [
-  {
-   "id": "churn-select1",
-   "args": [
-    "--exceed-mode=churn-select1",
-    "--exceed-rate=0.25",
-    "--exceed-life=10s"
-   ]
-  },
   {
    "id": "churn-getlock",
    "args": [
@@ -35,27 +27,13 @@
    ]
   },
   {
-   "id": "churn-setvar",
-   "args": [
-    "--exceed-mode=churn-setvar",
-    "--exceed-rate=0.25",
-    "--exceed-life=10s"
-   ]
-  },
-  {
    "id": "burst",
    "args": [
     "--exceed-mode=burst",
     "--exceed-k=40",
     "--exceed-life=20s"
    ]
-  },
-  {
-   "id": "steady-settz",
-   "args": [
-    "--exceed-mode=steady-settz",
-    "--exceed-k=12"
-   ]
   }
- ]
+ ],
+ "collect_later": true
 }

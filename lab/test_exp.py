@@ -87,6 +87,21 @@ class Judge(unittest.TestCase):
         self.assertTrue(exp.judge({}, self.dir, meta, T0, self.end)["valid"])
 
 
+class Deferred(unittest.TestCase):
+    def test_missing_series_become_pending(self):
+        self.assertEqual(exp.defer_reasons(["metric_missing:client", "os_cpu_missing", "metric_missing:dbconn"]), [exp.PENDING])
+
+    def test_real_problems_are_kept(self):
+        self.assertEqual(exp.defer_reasons(["rc=1", "metric_missing:cpu", "baseline_unmet"]), ["rc=1", exp.PENDING, "baseline_unmet"])
+
+    def test_nothing_missing_stays_empty(self):
+        self.assertEqual(exp.defer_reasons([]), [])
+
+    def test_pending_is_picked_up_by_recollect(self):
+        # recollect re-collects a run whose reasons start with metric_missing / os_cpu: the pending marker must match
+        self.assertTrue(exp.PENDING.startswith("metric_missing"))
+
+
 class Baseline(unittest.TestCase):
     def test_idle_pool_is_not_a_leftover(self):
         # An used Proxy keeps its idle pool (MaxIdleConnectionsPercent 10% of max_connections 100 = 10, 5 per node) for hours with no

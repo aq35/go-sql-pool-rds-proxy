@@ -521,3 +521,43 @@ func patMixed(ctx context.Context, t target, tlsF string, containers, maxOpen, m
 		"pool_wait_count", waits, "max_idle_closed", idleClosed, "max_lifetime_closed", lifeClosed, "new_connections_pools", connects)
 	return nil
 }
+
+// ---- idle-gap-matrix --------------------------------------------------------------------------------------------------------
+
+// patIdleGapMatrix runs every idle-gap condition AT THE SAME TIME in one run. The conditions use different connections, and a connection's
+// idle timer at the Proxy is its own, so they do not disturb each other (and none of them uses a noticeable amount of CPU). This turns
+// ten runs of eight minutes into one run of eight minutes.
+//
+//	for every gap: one worker on a one-connection pool (the pool owns the connection)      ctl1,  ConnMaxIdleTime none
+//	               three workers each owning a db.Conn (no pool reuse, no retry)             ded3
+//	for gaps below `idleTime` * 1.5: one worker on a one-connection pool with ConnMaxIdleTime = idleTime    ctl1 + ConnMaxIdleTime
+func patIdleGapMatrix(ctx context.Context, t target, tlsF string, gaps []time.Duration, idleTime, dur time.Duration) error {
+	type group struct {
+		n    int
+		gap  time.Duration
+		idle time.Duration
+		ded  bool
+	}
+	var groups []group
+	for _, g := range gaps {
+		groups = append(groups, group{1, g, 0, false}, group{3, g, 0, true})
+		if idleTime > 0 && g < idleTime*3/2 {
+			groups = append(groups, group{1, g, idleTime, false})
+		}
+	}
+	log.Printf("PATTERN-MATRIX %d groups at the same time, %d gaps", len(groups), len(gaps))
+	var wg sync.WaitGroup
+	errs := make(chan error, len(groups))
+	for _, g := range groups {
+		wg.Add(1)
+		go func(g group) {
+			defer wg.Done()
+			if err := patIdleGap(ctx, t, tlsF, g.n, g.gap, g.idle, dur, g.ded); err != nil {
+				errs <- err
+			}
+		}(g)
+	}
+	wg.Wait()
+	close(errs)
+	return <-errs
+}

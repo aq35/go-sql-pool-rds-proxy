@@ -14,7 +14,7 @@
  ],
  "repeat": 5,
  "floor": 100,
- "observe_after_s": 30,
+ "observe_after_s": 15,
  "required_metrics": [
   "client",
   "dbconn",
@@ -34,5 +34,6 @@
     "--variant=parallel"
    ]
   }
- ]
+ ],
+ "collect_later": true
 }

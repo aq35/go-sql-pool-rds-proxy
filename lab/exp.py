@@ -309,6 +309,16 @@ def judge(e, rdir, meta, start, run_end):
     return {"valid": not reasons, "reasons": reasons}
 
 
+PENDING = "metric_missing:pending"
+
+
+def defer_reasons(reasons):
+    """For an experiment with "collect_later": CloudWatch / Enhanced Monitoring values of the run are not there yet when it ends, so a
+    missing series is "pending" (fetched once for the whole experiment, see recollect_experiment), not a failure."""
+    out = [PENDING if x.startswith(("metric_missing", "os_cpu")) else x for x in reasons]
+    return list(dict.fromkeys(out))
+
+
 def run_experiment(exp, repeat=0, only=None):
     """Runs the experiment on the CURRENT Aurora class; results go to out/<exp>__<class>/. Returns {"failed": [...], "invalid": [...]}.
     Proxy settings changed by a run are always restored (also on errors / Ctrl-C); a failed restore fails the experiment."""
@@ -406,8 +416,11 @@ def _run_experiment(exp, repeat=0, only=None):
                     "condition": "warm-proxy (previous connections may remain)" if floor >= 50 else "settled (Proxy connections at the floor)"}
             (rdir / "meta.json").write_text(json.dumps(meta, indent=1))
             j = judge(e, rdir, meta, start, run_end)
+            if e.get("collect_later"):
+                j = {"valid": False if defer_reasons(j["reasons"]) else True, "reasons": defer_reasons(j["reasons"])}
             (rdir / "valid.json").write_text(json.dumps(j))
-            if not j["valid"]: invalid.append(rid + ":" + ",".join(j["reasons"])); log("INVALID", rid, j["reasons"])
+            real = [x for x in j["reasons"] if x != PENDING]
+            if real: invalid.append(rid + ":" + ",".join(real)); log("INVALID", rid, real)
             if rc != 0 and rc != 3: failed.append(rid)
             (rdir / "ok").write_text("")                    # "completed": the run finished and its data were saved. Validity is valid.json.
             done += 1
@@ -417,20 +430,30 @@ def _run_experiment(exp, repeat=0, only=None):
     return {"failed": failed, "invalid": invalid}
 
 
-def cmd_recollect(a):
-    """Collect again (CloudWatch + Enhanced Monitoring) for the runs of an experiment whose data were missing, then re-judge them."""
-    take_lock()
-    e = load_exp(a.exp)
-    for exp_dir in sorted(OUT.glob(f"{a.exp}__*")):
+def recollect_experiment(exp_name):
+    """Collect again (CloudWatch + Enhanced Monitoring) for the runs of an experiment whose data were missing or are pending, then re-judge
+    them. Returns the invalid run ids that remain ("<run>:<reasons>")."""
+    e = load_exp(exp_name)
+    remaining = []
+    for exp_dir in sorted(OUT.glob(f"{exp_name}__*")):
         for rdir in sorted(exp_dir.glob("*.r*")):
             if not (rdir / "meta.json").exists(): continue
             meta = json.loads((rdir / "meta.json").read_text()); start = dt.datetime.fromisoformat(meta["start"].replace("Z", "+00:00"))
             end = dt.datetime.fromisoformat(meta["run_end"].replace("Z", "+00:00"))
             j = json.loads((rdir / "valid.json").read_text()) if (rdir / "valid.json").exists() else {"valid": False, "reasons": ["no valid.json"]}
-            if not any(x.startswith(("metric_missing", "os_cpu")) or x == "no valid.json" for x in j["reasons"]): continue
-            log("recollect", rdir.name)
-            collect(rdir, start - dt.timedelta(minutes=3), end + dt.timedelta(minutes=10))
-            (rdir / "valid.json").write_text(json.dumps(judge(e, rdir, meta, start, end)))
+            if any(x.startswith(("metric_missing", "os_cpu")) or x == "no valid.json" for x in j["reasons"]):
+                log("recollect", rdir.name)
+                collect(rdir, start - dt.timedelta(minutes=3), end + dt.timedelta(minutes=10))
+                j = judge(e, rdir, meta, start, end)
+                (rdir / "valid.json").write_text(json.dumps(j))
+            if not j["valid"]: remaining.append(rdir.name + ":" + ",".join(j["reasons"]))
+    return remaining
+
+
+def cmd_recollect(a):
+    take_lock()
+    left = recollect_experiment(a.exp)
+    log("recollect done;", len(left), "run(s) still invalid", left)
 
 
 def cmd_status(a):
@@ -466,6 +489,11 @@ def cmd_campaign(a):
             if "aurora_class" in step: ensure_class(step["aurora_class"])
             else:
                 r = run_experiment(step["exp"], step.get("repeat", 0), step.get("only")) or {"failed": [], "invalid": []}
+                if load_exp(step["exp"]).get("collect_later"):
+                    log("collect_later:", step["exp"], "- waiting 150 s once for CloudWatch, then collecting every run of the experiment")
+                    time.sleep(150)
+                    left = recollect_experiment(step["exp"])
+                    r = {"failed": r["failed"], "invalid": left}
                 problems += [f'{step["exp"]}:{x}' for x in r["failed"] + r["invalid"]]
         st.update(state="done" if not problems else "done_with_failures", problems=problems, finished=iso(now()))
     except BaseException as ex:

@@ -421,7 +421,7 @@ func runPatternsCmd(args []string) error {
 	fs := newFlagSet("patterns")
 	var cf commonFlags
 	cf.register(fs, 10*time.Minute)
-	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls | reboot-recover | limit | contention | mixed")
+	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls | reboot-recover | limit | contention | mixed | idle-gap-matrix")
 	tlsF := fs.String("tls", "", "\"\" (follow the infrastructure: skip-verify if the Proxy requires TLS) | none (plain TCP, on purpose) | skip-verify (TLS, certificate not verified)")
 	proxyAZ := fs.String("proxy-az", "", "same | cross (PROXY_IP_SAME / PROXY_IP_CROSS)")
 	conns := fs.Int("conns", 32, "warmup: concurrent queries / pool size; pin-patterns: workers; stampede: pool size")
@@ -442,6 +442,7 @@ func runPatternsCmd(args []string) error {
 	think := fs.Duration("think", 50*time.Millisecond, "pin-patterns / stampede: pause between queries per worker")
 	gap := fs.Duration("gap", 30*time.Second, "idle-gap: pause between queries of one worker")
 	idleTime := fs.Duration("idle-time", 0, "idle-gap: SetConnMaxIdleTime (0 = none)")
+	gapsF := fs.String("gaps", "30s,55s,65s,90s", "idle-gap-matrix: the gaps to run at the same time")
 	rebootAfter := fs.Duration("reboot-after", time.Minute, "reboot-recover: when (after the start) the writer is rebooted")
 	rebootCmd := fs.String("reboot-cmd", `aws rds reboot-db-instance --db-instance-identifier "$WRITER_INSTANCE_ID" --query DBInstance.DBInstanceStatus --output text`, "reboot-recover: shell command that restarts the database (locally: docker restart <name>)")
 	hold := fs.Duration("hold", 60*time.Second, "limit: how long connections are held / how long each busy query runs; contention (tx-hold): time a transaction holds its connection")
@@ -529,6 +530,20 @@ func runPatternsCmd(args []string) error {
 		return nil
 	case "pitfalls":
 		return patPitfalls(ctx, t, *tlsF)
+	case "idle-gap-matrix":
+		var gaps []time.Duration
+		for _, x := range strings.Split(*gapsF, ",") {
+			g, perr := time.ParseDuration(strings.TrimSpace(x))
+			if perr != nil || g <= 0 {
+				return fmt.Errorf("bad --gaps %q", *gapsF)
+			}
+			gaps = append(gaps, g)
+		}
+		it := *idleTime
+		if it == 0 {
+			it = 45 * time.Second
+		}
+		return patIdleGapMatrix(ctx, t, *tlsF, gaps, it, cf.duration)
 	case "reboot-recover":
 		return patRebootRecover(ctx, t, *tlsF, *conns, *think, *rebootAfter, *lifetime, *rebootCmd, cf.duration)
 	case "limit":
@@ -542,7 +557,7 @@ func runPatternsCmd(args []string) error {
 		}
 		return patMixed(ctx, t, *tlsF, *containers, mo, *maxIdleF, *sites, *webRPS, *perReq, wm, *slowEvery, *fastEvery, cf.duration, *rows)
 	}
-	return fmt.Errorf("--mode must be warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls | reboot-recover | limit | contention | mixed")
+	return fmt.Errorf("--mode must be warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls | reboot-recover | limit | contention | mixed | idle-gap-matrix")
 }
 
 // ---- warmup -------------------------------------------------------------------------------------------------------------

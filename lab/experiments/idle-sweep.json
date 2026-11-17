@@ -13,37 +13,13 @@
   "--query-every=100ms",
   "--lifetime=0"
  ],
- "repeat": 3,
- "observe_after_s": 120,
+ "repeat": 1,
+ "observe_after_s": 15,
  "runs": [
   {
    "id": "idle0",
    "args": [
     "--max-idle=0"
-   ]
-  },
-  {
-   "id": "idle1",
-   "args": [
-    "--max-idle=1"
-   ]
-  },
-  {
-   "id": "idle2",
-   "args": [
-    "--max-idle=2"
-   ]
-  },
-  {
-   "id": "idle3",
-   "args": [
-    "--max-idle=3"
-   ]
-  },
-  {
-   "id": "idle4",
-   "args": [
-    "--max-idle=4"
    ]
   },
   {
@@ -58,5 +34,6 @@
     "--max-idle=10"
    ]
   }
- ]
+ ],
+ "collect_later": true
 }

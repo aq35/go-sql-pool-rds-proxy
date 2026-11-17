@@ -5,7 +5,7 @@
  "reading": "run(h0〜h30)ごとに、proxy_pinned_sum(ピン留めの合計。ロック専用は 3 コンテナ × holders)、proxy_dbconn_sum、hold_avg_ms / hold_p99_ms、wait_count、errors(summary の Status)、borrowlat を並べる。h0 が対照。悪化が始まる最小の水準の、ピン留めの合計 ÷ 80 が α の候補。1 水準 1 回なので、水準間の差が揺らぎの範囲か、pat-control のばらつきと比べる。",
  "scenario": "pool-load",
  "common": [
-  "--duration=5m",
+  "--duration=3m",
   "--containers=3",
   "--total-conns=36",
   "--workers-per-pool=10",
@@ -17,7 +17,7 @@
   "--lock-mode=none"
  ],
  "repeat": 1,
- "observe_after_s": 60,
+ "observe_after_s": 15,
  "runs": [
   {
    "id": "h0",
@@ -61,5 +61,6 @@
     "--lock-holders=30"
    ]
   }
- ]
+ ],
+ "collect_later": true
 }

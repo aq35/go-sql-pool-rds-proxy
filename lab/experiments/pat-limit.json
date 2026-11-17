@@ -7,8 +7,8 @@
  "common": [
   "--duration=6m"
  ],
- "repeat": 2,
- "observe_after_s": 60,
+ "repeat": 1,
+ "observe_after_s": 15,
  "required_metrics": [
   "cpu"
  ],
@@ -41,5 +41,6 @@
     "--hold=90s"
    ]
   }
- ]
+ ],
+ "collect_later": true
 }

@@ -5,7 +5,7 @@
  "reading": "proxy-N と cluster-N を、同じ N で比べる。遅延: hold_avg_ms、hold_p99_ms。接続数: Proxy 経由は proxy_dbconn_sum(Proxy→Aurora)と client_sum。直結は、Aurora 側の接続数(summary の aurora_conn、または threads_connected_max)。max_connections=100 なので、N=60 の直結は、上限の 60% を使う。直結の run は、Proxy の指標(client / dbconn)が 0 になるので、required_metrics に含めない。",
  "scenario": "pool-load",
  "common": [
-  "--duration=6m",
+  "--duration=4m",
   "--containers=3",
   "--hold=5ms",
   "--query-every=500ms",
@@ -14,8 +14,8 @@
   "--interpolate=true",
   "--lock-mode=none"
  ],
- "repeat": 2,
- "observe_after_s": 60,
+ "repeat": 1,
+ "observe_after_s": 15,
  "required_metrics": [
   "cpu"
  ],
@@ -52,5 +52,6 @@
     "--workers-per-pool=20"
    ]
   }
- ]
+ ],
+ "collect_later": true
 }

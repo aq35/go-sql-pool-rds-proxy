@@ -8,12 +8,12 @@
   "--mode=timeout-cascade",
   "--mix=cpu",
   "--max-open=32",
-  "--measure=90s",
+  "--measure=60s",
   "--duration=10m"
  ],
  "repeat": 2,
  "floor": 100,
- "observe_after_s": 30,
+ "observe_after_s": 15,
  "runs": [
   {
    "id": "r300-t0",
@@ -93,5 +93,6 @@
   "dbconn",
   "cpu",
   "os_cpu"
- ]
+ ],
+ "collect_later": true
 }

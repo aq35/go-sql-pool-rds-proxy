@@ -2,17 +2,17 @@
  "name": "pat-pin",
  "question": "どの Go / GORM の設定が、RDS Proxy のセッションをピン留めするか(interpolateParams=false、GORM PrepareStmt、DSN の time_zone と sql_mode、loc だけ、トランザクション内の待ち)",
  "hypothesis": "interpolateParams=false(パラメータ付きクエリがサーバ側プリペアドになる)と、GORM の PrepareStmt=true は、ピン留めされる。DSN の time_zone / sql_mode は、接続の確立で SET が走るが、ピン留めされない可能性がある(先行調査では time_zone はピン留め 0)。loc だけは、SET がないのでピン留めされない。長いトランザクションは、ピン留めではなく、InTransaction と、接続の専有として現れる。 DSN で接続ごとに送る `SET` のうち、サーバーが追跡できない変数(sql_select_limit、ユーザー変数、autocommit=0 など)は、ピン留めされる可能性がある。",
- "reading": "variant ごとに、Proxy の pinned max と intx max、com_stmt_prepare_delta を、base と比べる。DatabaseConnections は、前の run の残りを含むので読まない(この実験は、待ち時間を省いている)。 session_time_zone は、サーバーのセッションが実際に使っている time_zone(loc だけの run で変わらないこと、set-tz の run で +09:00 になることを確認する)。 go_open_max は Go 側が数えた接続数(Proxy の ClientConnections は実数より少なく出るため、ピン留めの数は、これと比べて読む)。run の間は 130 秒空けてあり、CloudWatch の 1 分値が前後の run と混ざらない。set-* は、DSN の param として、接続のたびに `SET k=v` が走る。この実験の間だけ、Proxy のデバッグログを有効にする(ピン留めの理由を CloudWatch Logs の `/aws/rds/proxy/<proxy 名>` で確かめるため。AWS は、調査のときだけ一時的に使うことを推奨している。ログに SQL が含まれうるので、終わると元に戻す)。proxy_*_max(Maximum)と proxy_*_sum(Sum、AWS の推奨)を並べて読む。",
+ "reading": "variant ごとに、Proxy の pinned max と intx max、com_stmt_prepare_delta を、base と比べる。DatabaseConnections は、前の run の残りを含むので読まない(この実験は、待ち時間を省いている)。 session_time_zone は、サーバーのセッションが実際に使っている time_zone(loc だけの run で変わらないこと、set-tz の run で +09:00 になることを確認する)。 go_open_max は Go 側が数えた接続数(Proxy の ClientConnections は実数より少なく出るため、ピン留めの数は、これと比べて読む)。run の間の隙間は設けていない(Aurora 側の com_stmt_prepare_delta は run ごとの正確な値。CloudWatch の 1 分値は、前後の run と混ざりうるので、ピン留めされない変種と交互に並べて、見分ける)。set-* は、DSN の param として、接続のたびに `SET k=v` が走る。この実験の間だけ、Proxy のデバッグログを有効にする(ピン留めの理由を CloudWatch Logs の `/aws/rds/proxy/<proxy 名>` で確かめるため。AWS は、調査のときだけ一時的に使うことを推奨している。ログに SQL が含まれうるので、終わると元に戻す)。proxy_*_max(Maximum)と proxy_*_sum(Sum、AWS の推奨)を並べて読む。 変種は、ピン留めされるもの(prep-false、gorm-prepare)と、されないものを、交互に並べてある(前の run のピン留めが、次の 1 分値に混ざったとき、見分けるため)。Aurora 側の com_stmt_prepare_delta は、run ごとの正確な値で、主な根拠。",
  "scenario": "patterns",
  "common": [
   "--mode=pin-patterns",
   "--conns=10",
   "--think=50ms",
-  "--duration=200s"
+  "--duration=120s"
  ],
- "repeat": 2,
+ "repeat": 1,
  "floor": 100,
- "observe_after_s": 60,
+ "observe_after_s": 15,
  "proxy": {
   "DebugLogging": true
  },
@@ -27,6 +27,12 @@
    "id": "prep-false",
    "args": [
     "--variant=prep-false"
+   ]
+  },
+  {
+   "id": "loc-only",
+   "args": [
+    "--variant=loc-only"
    ]
   },
   {
@@ -45,6 +51,12 @@
    "id": "set-sqlmode",
    "args": [
     "--variant=set-sqlmode"
+   ]
+  },
+  {
+   "id": "long-tx",
+   "args": [
+    "--variant=long-tx"
    ]
   },
   {
@@ -76,21 +88,8 @@
    "args": [
     "--variant=set-autocommit-off"
    ]
-  },
-  {
-   "id": "loc-only",
-   "args": [
-    "--variant=loc-only"
-   ]
-  },
-  {
-   "id": "long-tx",
-   "args": [
-    "--variant=long-tx"
-   ]
   }
  ],
- "pre_gap_s": 130,
  "required_metrics": [
   "client",
   "dbconn",
@@ -98,5 +97,6 @@
   "pinned",
   "intx",
   "os_cpu"
- ]
+ ],
+ "collect_later": true
 }

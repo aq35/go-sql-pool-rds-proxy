@@ -12,24 +12,8 @@
  ],
  "repeat": 2,
  "floor": 100,
- "observe_after_s": 30,
+ "observe_after_s": 15,
  "runs": [
-  {
-   "id": "serial-o20-r30",
-   "args": [
-    "--variant=serial",
-    "--rps=30",
-    "--max-open=20"
-   ]
-  },
-  {
-   "id": "parallel-o20-r30",
-   "args": [
-    "--variant=parallel",
-    "--rps=30",
-    "--max-open=20"
-   ]
-  },
   {
    "id": "serial-o20-r55",
    "args": [
@@ -60,22 +44,6 @@
     "--variant=parallel",
     "--rps=70",
     "--max-open=20"
-   ]
-  },
-  {
-   "id": "serial-o6-r30",
-   "args": [
-    "--variant=serial",
-    "--rps=30",
-    "--max-open=6"
-   ]
-  },
-  {
-   "id": "parallel-o6-r30",
-   "args": [
-    "--variant=parallel",
-    "--rps=30",
-    "--max-open=6"
    ]
   },
   {
@@ -116,5 +84,6 @@
   "dbconn",
   "cpu",
   "os_cpu"
- ]
+ ],
+ "collect_later": true
 }

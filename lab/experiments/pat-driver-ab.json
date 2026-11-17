@@ -2,70 +2,38 @@
  "name": "pat-driver-ab",
  "question": "MySQL ドライバを v1.8.1(前回の実験)から v1.10.1(今回)に更新したことで、接続の扱い(Proxy に切られた接続への再接続、ピン留め、接続の確立)は変わったか。前回との差が、ドライバの違いか、条件の違いかの切り分け",
  "hypothesis": "プールと接続の再利用に関する大きな変化は、リリースノートにない。ピン留め(prepare の数)は、ドライバの版によらず同じ。Proxy が切った接続への再接続は、どちらの版も、透過的に行う(エラー 0)。差があるなら、v1.9.0 の「エラー処理の改善」に関係する、閉じた接続の扱いの違い。",
- "reading": "同じ条件の new(v1.10.1)と old(v1.8.1)を、run id の接尾辞で比べる。idle-gap: new_conn_per_query、errors、app_reconnects、p99。pin: com_stmt_prepare_delta、proxy_pinned_sum。warmup: w1_p50_ms_med。2 回の範囲が重なる差は、結論にしない(pat-control のばらつきも参照)。binary の版は meta.json の go_deps / bin に残る。",
+ "reading": "同じ条件の new(v1.10.1)と old(v1.8.1)を、run id の接尾辞で比べる。idle-gap(matrix。gap 65 秒だけ): new_conn_per_query、errors、app_reconnects、p99。pin: com_stmt_prepare_delta、proxy_pinned_sum。warmup: w1_p50_ms_med。2 回の範囲が重なる差は、結論にしない(pat-control のばらつきも参照)。binary の版は meta.json の go_deps / bin に残る。",
  "scenario": "patterns",
  "common": [],
- "repeat": 2,
+ "repeat": 1,
  "floor": 100,
- "observe_after_s": 60,
+ "observe_after_s": 15,
  "runs": [
   {
-   "id": "ctl1-gap65-new",
+   "id": "matrix-new",
    "bin": "lab",
-   "args": [
-    "--mode=idle-gap",
-    "--conns=1",
-    "--gap=65s",
-    "--idle-time=0",
-    "--duration=8m"
-   ],
    "proxy": {
     "IdleClientTimeout": 60
-   }
+   },
+   "args": [
+    "--mode=idle-gap-matrix",
+    "--gaps=65s",
+    "--idle-time=0",
+    "--duration=8m"
+   ]
   },
   {
-   "id": "ctl1-gap65-old",
+   "id": "matrix-old",
    "bin": "lab-v181",
-   "args": [
-    "--mode=idle-gap",
-    "--conns=1",
-    "--gap=65s",
-    "--idle-time=0",
-    "--duration=8m"
-   ],
    "proxy": {
     "IdleClientTimeout": 60
-   }
-  },
-  {
-   "id": "ded3-gap65-new",
-   "bin": "lab",
+   },
    "args": [
-    "--mode=idle-gap",
-    "--conns=3",
-    "--dedicated=true",
-    "--gap=65s",
+    "--mode=idle-gap-matrix",
+    "--gaps=65s",
     "--idle-time=0",
     "--duration=8m"
-   ],
-   "proxy": {
-    "IdleClientTimeout": 60
-   }
-  },
-  {
-   "id": "ded3-gap65-old",
-   "bin": "lab-v181",
-   "args": [
-    "--mode=idle-gap",
-    "--conns=3",
-    "--dedicated=true",
-    "--gap=65s",
-    "--idle-time=0",
-    "--duration=8m"
-   ],
-   "proxy": {
-    "IdleClientTimeout": 60
-   }
+   ]
   },
   {
    "id": "pin-base-new",
@@ -139,10 +107,10 @@
    "args": [
     "--mode=warmup",
     "--conns=32",
-    "--trials=10",
-    "--pause=15s",
+    "--trials=6",
+    "--pause=10s",
     "--warm=false",
-    "--duration=15m"
+    "--duration=6m"
    ]
   },
   {
@@ -151,10 +119,10 @@
    "args": [
     "--mode=warmup",
     "--conns=32",
-    "--trials=10",
-    "--pause=15s",
+    "--trials=6",
+    "--pause=10s",
     "--warm=false",
-    "--duration=15m"
+    "--duration=6m"
    ]
   }
  ],
@@ -163,5 +131,6 @@
   "dbconn",
   "cpu",
   "os_cpu"
- ]
+ ],
+ "collect_later": true
 }

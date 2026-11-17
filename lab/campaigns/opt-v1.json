@@ -1,0 +1,54 @@
+{
+ "name": "opt-v1",
+ "description": "最適化した統合キャンペーン(約 10 時間)。順番: A 遅延と CPU の実験(隙間なし)→ B Proxy の設定を変える実験 → C Proxy の裏の接続数に依存する実験(残りが少ない順)→ D writer の再起動(最後)。観測は、実験ごとに最後に 1 回(collect_later)。独立な条件は 1 run に同時に(idle-gap-matrix)。trigger-isolation は、full-v2 で完了済みなので含めない。pat-warmup は、前回の結果があり、冷えた Proxy は、もう作れないので含めない",
+ "steps": [
+  {
+   "aurora_class": "db.r6g.large"
+  },
+  {
+   "exp": "pat-control"
+  },
+  {
+   "exp": "pat-serial-parallel"
+  },
+  {
+   "exp": "pat-timeout"
+  },
+  {
+   "exp": "pat-contention"
+  },
+  {
+   "exp": "pat-stampede"
+  },
+  {
+   "exp": "pat-idle-gap"
+  },
+  {
+   "exp": "pat-driver-ab"
+  },
+  {
+   "exp": "pat-pin"
+  },
+  {
+   "exp": "idle-sweep"
+  },
+  {
+   "exp": "proxy-vs-direct"
+  },
+  {
+   "exp": "pinning-impact"
+  },
+  {
+   "exp": "exceed-cases"
+  },
+  {
+   "exp": "pat-limit"
+  },
+  {
+   "exp": "pat-mixed"
+  },
+  {
+   "exp": "pat-reboot"
+  }
+ ]
+}
