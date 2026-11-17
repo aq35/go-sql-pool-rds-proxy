@@ -88,23 +88,25 @@ class Judge(unittest.TestCase):
 
 
 class Baseline(unittest.TestCase):
-    def test_met_when_both_last_points_are_at_or_below_the_floor(self):
-        self.assertTrue(exp.baseline_met([2, 0], 2))
-        self.assertTrue(exp.baseline_met([0, 0], 2))
+    def test_idle_pool_is_not_a_leftover(self):
+        # An used Proxy keeps its idle pool (MaxIdleConnectionsPercent 10% of max_connections 100 = 10, 5 per node) for hours with no
+        # client (2026-11-17). That is the baseline a run starts from, not a leftover to wait for.
+        self.assertTrue(exp.baseline_met([10, 10], exp.FLOOR_DEFAULT))
+        self.assertTrue(exp.baseline_met([0, 0], exp.FLOOR_DEFAULT))       # a never-used Proxy has 0
+        self.assertTrue(exp.baseline_met([10, 9], exp.FLOOR_DEFAULT))
 
-    def test_not_met_while_connections_are_left_over(self):
-        # the 2026-11-17 finding: after pinned runs the whole Proxy (Sum) held 10 while its largest node (Maximum) showed 5-6;
-        # the old check compared the Maximum with 6 and called that "settled"
-        self.assertFalse(exp.baseline_met([10, 10], 2))
-        self.assertFalse(exp.baseline_met([0, 10], 2))
-        self.assertFalse(exp.baseline_met([10, 0], 2))
+    def test_connections_above_the_idle_pool_are_a_leftover(self):
+        # e.g. after a burst of 40 concurrent queries 25 backend connections stay for about 5 minutes
+        self.assertFalse(exp.baseline_met([25, 25], exp.FLOOR_DEFAULT))
+        self.assertFalse(exp.baseline_met([10, 25], exp.FLOOR_DEFAULT))
+        self.assertFalse(exp.baseline_met([25, 10], exp.FLOOR_DEFAULT))
 
     def test_not_met_without_two_points(self):
-        self.assertFalse(exp.baseline_met([], 2))
-        self.assertFalse(exp.baseline_met([0], 2))
+        self.assertFalse(exp.baseline_met([], exp.FLOOR_DEFAULT))
+        self.assertFalse(exp.baseline_met([0], exp.FLOOR_DEFAULT))
 
-    def test_default_floor_is_for_the_whole_proxy(self):
-        self.assertLessEqual(exp.FLOOR_DEFAULT, 2)
+    def test_default_floor_is_the_whole_proxy_idle_pool(self):
+        self.assertEqual(exp.FLOOR_DEFAULT, 10)
 
 
 class Manifest(unittest.TestCase):

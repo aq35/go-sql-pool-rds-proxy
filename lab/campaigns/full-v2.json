@@ -1,6 +1,6 @@
 {
  "name": "full-v2",
- "description": "前回の結論の測り直し(接続数を Sum で: Proxy の下限、ピン留めと接続の保持、バースト後の残留、MaxIdleConns の効果)と、patterns-v2(タイムアウト、直列と並列、アイドルタイムアウト、ピン留めの原因、一斉寿命、ウォームアップ)。平文(requireTls=false)で前回と同じ条件。約 14 時間。順序は、測り直しが先。待ちの基準は、Proxy 全体(Sum)が 2 以下(最初の版は Maximum が 6 以下で、前の run の残りを待てていなかった: results/_run1-2026-11-17/README.md)。pat-floor は、最初の実行で足りたので外した",
+ "description": "前回の結論の測り直し(接続数を Sum で: Proxy の下限、ピン留めと接続の保持、バースト後の残留、MaxIdleConns の効果)と、patterns-v2(タイムアウト、直列と並列、アイドルタイムアウト、ピン留めの原因、一斉寿命、ウォームアップ)。平文(requireTls=false)で前回と同じ条件。約 14 時間。順序は、測り直しが先。待ちの基準は、Proxy 全体(Sum)が、アイドルの接続の定常値(10 = MaxIdleConnectionsPercent 10% × max_connections 100)以下。pat-floor は、最初の実行で足りたので外した(results/_run1-2026-11-17/README.md)",
  "steps": [
   {
    "aurora_class": "db.r6g.large"

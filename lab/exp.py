@@ -22,7 +22,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE / "out"
 EXPS = HERE / "experiments"
 REQUIRED = ["name", "question", "hypothesis", "reading", "scenario", "runs"]
-FLOOR_DEFAULT = 2          # whole-Proxy DatabaseConnections (Sum) a run may start with. An unused Proxy has 0; the old "5" was a leftover (docs/metrics.md)
+FLOOR_DEFAULT = 10         # whole-Proxy DatabaseConnections (Sum) a run may start with = the idle pool the Proxy keeps once it has been used:
+                           # MaxIdleConnectionsPercent 10% of max_connections 100, 5 per node on 2 nodes (steady for hours with no client;
+                           # a never-used Proxy has 0). Above it, connections of the previous run are still there. docs/metrics.md
 BASELINE_TIMEOUT_S = 20 * 60
 
 
@@ -66,9 +68,9 @@ def baseline_met(last, floor):
 
 def wait_baseline(floor):
     """Block until the last two 1-minute DatabaseConnections points of the WHOLE Proxy (statistic Sum) are <= floor. Returns a record for
-    meta.json. It used to compare the Maximum (one Proxy node) with 6: with 10 connections left over, the largest node shows 5-6, so a run
-    started on the previous run's leftovers (smoke / trigger-isolation, 2026-11-17: after pinned runs the Sum stayed at 10 while the Maximum
-    read 5-6). A Proxy that has had no client has 0 (pat-floor), so the default floor is small."""
+    meta.json. The floor is the Proxy's idle pool (10 = 5 per node), which it keeps for hours with no client once it has been used: a
+    stricter floor (2) was never reached and made every run "baseline_unmet" (2026-11-17). The old check (Maximum of one node <= 6) was
+    equivalent for the default settings; Sum is the whole-Proxy value and is what the summaries report."""
     dbm = next(m for m in METRICS["metrics"] if m["key"] == "dbconn")
     t0 = time.time(); last = None
     while time.time() - t0 < BASELINE_TIMEOUT_S:
