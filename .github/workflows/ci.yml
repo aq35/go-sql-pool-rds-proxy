@@ -98,8 +98,48 @@ jobs:
         run: |
           python test_rules.py
           python ../scripts/test_vuln_gate.py
+          python ../scripts/test_check_pitfalls.py
           python -m unittest -v test_exp 2>&1 | tee ../unittest.txt
           { echo "### python unit tests"; echo '```'; tail -5 ../unittest.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  integration:
+    name: "Integration (real MySQL - pool pitfalls, GORM pool)"
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-throwaway
+          MYSQL_DATABASE: app
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-only-throwaway"
+          --health-interval=5s --health-timeout=5s --health-retries=24
+    defaults:
+      run:
+        working-directory: lab
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: lab/go.mod
+          cache-dependency-path: lab/go.sum
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: go build -o lab .
+      - name: run the probes against MySQL and assert the outcomes
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: "3306"
+          DB_USER: root
+          DB_PASS: ci-only-throwaway
+          DB_NAME: app
+        run: |
+          ./lab --scenario=patterns --mode=pitfalls --duration=2m | tee pitfalls.txt
+          ./lab --scenario=patterns --mode=gorm-pool --max-open=2,1 --duration=2m | tee gorm.txt
+          python3 ../scripts/check_pitfalls.py pitfalls.txt gorm.txt | tee check.txt
+          { echo "### database/sql and GORM pitfalls (real MySQL 8.0)"; echo '```'; cat check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   shell:
     name: Shell (shellcheck)

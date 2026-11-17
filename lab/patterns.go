@@ -421,7 +421,7 @@ func runPatternsCmd(args []string) error {
 	fs := newFlagSet("patterns")
 	var cf commonFlags
 	cf.register(fs, 10*time.Minute)
-	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle")
+	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls")
 	tlsF := fs.String("tls", "", "\"\" (follow the infrastructure: skip-verify if the Proxy requires TLS) | none (plain TCP, on purpose) | skip-verify (TLS, certificate not verified)")
 	proxyAZ := fs.String("proxy-az", "", "same | cross (PROXY_IP_SAME / PROXY_IP_CROSS)")
 	conns := fs.Int("conns", 32, "warmup: concurrent queries / pool size; pin-patterns: workers; stampede: pool size")
@@ -518,8 +518,10 @@ func runPatternsCmd(args []string) error {
 		result("mode", "idle", "note", "no_client_connections")
 		<-ctx.Done()
 		return nil
+	case "pitfalls":
+		return patPitfalls(ctx, t, *tlsF)
 	}
-	return fmt.Errorf("--mode must be warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle")
+	return fmt.Errorf("--mode must be warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls")
 }
 
 // ---- warmup -------------------------------------------------------------------------------------------------------------
