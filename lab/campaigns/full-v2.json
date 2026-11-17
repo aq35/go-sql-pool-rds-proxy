@@ -1,0 +1,61 @@
+{
+ "name": "full-v2",
+ "description": "前回の結論の測り直し(接続数を Sum で: Proxy の下限、ピン留めと接続の保持、バースト後の残留、MaxIdleConns の効果)と、patterns-v2(タイムアウト、直列と並列、アイドルタイムアウト、ピン留めの原因、一斉寿命、ウォームアップ)。平文(requireTls=false)で前回と同じ条件。約 15 時間。順序は、測り直しが先",
+ "steps": [
+  {
+   "aurora_class": "db.r6g.large"
+  },
+  {
+   "exp": "pat-floor",
+   "repeat": 2
+  },
+  {
+   "exp": "trigger-isolation",
+   "only": [
+    "connect",
+    "ping-loop",
+    "select1",
+    "prepared",
+    "getlock",
+    "getlock-release",
+    "getlock-close"
+   ]
+  },
+  {
+   "exp": "exceed-cases"
+  },
+  {
+   "exp": "idle-sweep",
+   "repeat": 2,
+   "only": [
+    "idle0",
+    "idle5",
+    "idle10"
+   ]
+  },
+  {
+   "exp": "pat-timeout",
+   "repeat": 3
+  },
+  {
+   "exp": "pat-serial-parallel",
+   "repeat": 3
+  },
+  {
+   "exp": "pat-idle-gap"
+  },
+  {
+   "exp": "pat-pin"
+  },
+  {
+   "exp": "pat-stampede"
+  },
+  {
+   "exp": "pat-warmup"
+  },
+  {
+   "exp": "pat-warmup-proxycold",
+   "repeat": 1
+  }
+ ]
+}

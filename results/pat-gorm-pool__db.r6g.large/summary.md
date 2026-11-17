@@ -8,7 +8,9 @@
 
 値は、繰り返しの中央値 [最小–最大]。
 
-| run | 識別 | n | result | ms | peak_in_use | proxy_db_max | proxy_pinned_max | proxy_intx_max | proxy_client_max |
+`proxy_*` 列は CloudWatch の 1 分刻みで、前後の run を含む。`aurora_cpu_*` は Enhanced Monitoring の 1 秒値を run の区間(最初の 20 秒を除く)で切ったもの。`threads_*`、`aurora_questions_per_s` は Aurora に直接つないで 1 秒おきに取ったもの。
+
+| run | 識別 | n | result | ms | peak_in_use | proxy_client_max | proxy_dbconn_max | proxy_pinned_max | proxy_intx_max |
 |---|---|---|---|---|---|---|---|---|---|
 | gorm | max_open=2 test=tx-uses-tx | 3 | ok | 41.2 [18.37–54.13] | 1 | 0 | 0 | 0 | 0 |
 | gorm | max_open=2 test=tx-uses-db-inside | 3 | ok | 78.19 [59.52–175] | 2 | 0 | 0 | 0 | 0 |
@@ -25,5 +27,9 @@
 
 エラーの例: context_deadline_exceeded / context_deadline_exceeded;_sql:_transaction_has_already_been_committed_or_rolled
 
-## 警告
+## 無効な run(集計に含めていない。データは保存してある)
+
 なし
+
+`proxy_condition`: warm = 前の run の Proxy→Aurora の接続が残っている可能性がある(下限まで待っていない)、settled = 下限まで待った。両者を混ぜて比べない。
+`proxy_*_max` は Maximum、`proxy_*_sum` は Sum(AWS の推奨。`docs/metrics.md`)。

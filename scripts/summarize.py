@@ -32,6 +32,12 @@ def analyse(rdir):
              client=mx(inrun("client")), db=mx(inrun("dbconn")), pinned=mx(inrun("pinned")), borrowed=mx(inrun("borrowed")),
              excess=mx([v - cl.get(t, 0) for t, v in db if start <= t <= end + dt.timedelta(minutes=8)]),
              db_end=db[-1][1] if db else None, settle=settle)
+    # Sum is the statistic AWS recommends for these gauges and the whole-Proxy value (the Proxy runs on several nodes, each reporting its own
+    # share; Maximum sees only the largest node: docs/metrics.md). Sum is the primary column; Max stays for comparison with the earlier results.
+    sm = lambda k: mx(inrun(k + "__Sum"))
+    dbs, cls_ = dict(series(m, "dbconn__Sum")), dict(series(m, "client__Sum"))
+    r.update(client_sum=sm("client"), db_sum=sm("dbconn"), pinned_sum=sm("pinned"), borrowed_sum=sm("borrowed"),
+             excess_sum=mx([v - cls_.get(t, 0) for t, v in dbs.items() if start <= t <= end + dt.timedelta(minutes=8)]) if dbs else None)
     log = (rdir / "client.log").read_text(errors="replace")
     r["errors"] = sum(1 for l in log.splitlines() if ERR_RE.search(l))
     last = [l for l in log.splitlines() if "client_side_open" in l]
@@ -169,6 +175,8 @@ def patterns_summary():
             for k in ("client", "dbconn", "pinned", "intx"):   # Maximum (configured) and Sum (AWS-recommended) side by side
                 side[f"proxy_{k}_max"] = max(inrun(k) or [0])
                 if m["series"].get(f"{k}__Sum", {}).get("points"): side[f"proxy_{k}_sum"] = max(inrun(f"{k}__Sum") or [0])
+                if m["series"].get(f"{k}__Average", {}).get("points"): side[f"proxy_{k}_avg"] = max(inrun(f"{k}__Average") or [0])
+            if side.get("proxy_dbconn_avg"): side["proxy_nodes_est"] = round(side.get("proxy_dbconn_sum", 0) / side["proxy_dbconn_avg"], 1)
             # Aurora OS CPU per second (Enhanced Monitoring), cut to this run: skip the first 20 s (warm-up) and stop at the end of the run
             osf = rdir / "os_cpu.json"
             if osf.exists():
@@ -232,8 +240,9 @@ for rdir in sorted(d.glob("*.r*")):
     if (rdir / "ok").exists() and (rdir / "metrics.json").exists():
         runs.setdefault(rdir.name.rsplit(".r", 1)[0], []).append(analyse(rdir))
 
-cols = [("client", "ClientConn max"), ("db", "DBConn max"), ("pinned", "Pinned max"), ("borrowed", "Borrowed max"),
-        ("excess", "DB−Client max"), ("settle", "下限へ戻る(分)"), ("hold_avg_ms", "平均(ms)"), ("hold_p99_ms", "p99(ms)"),
+cols = [("client_sum", "ClientConn Sum最大"), ("db_sum", "DBConn Sum最大"), ("pinned_sum", "Pinned Sum最大"), ("borrowed_sum", "Borrowed Sum最大"),
+        ("excess_sum", "DB−Client Sum最大"), ("client", "ClientConn Max"), ("db", "DBConn Max"), ("pinned", "Pinned Max"), ("borrowed", "Borrowed Max"),
+        ("excess", "DB−Client Max"), ("settle", "下限へ戻る(分・Max基準)"), ("hold_avg_ms", "平均(ms)"), ("hold_p99_ms", "p99(ms)"),
         ("max_idle_closed", "idle closed"), ("failed", "失敗")]
 cols = [c for c in cols if any(r.get(c[0]) is not None for rs in runs.values() for r in rs)]
 
@@ -246,13 +255,13 @@ def cell(rs, k):
 
 
 out = [f"# {exp['name']} — {next((json.loads(m.read_text()).get('aurora_class') for m in d.glob('*.r*/meta.json')), '?')}", "", f"**問い**: {exp['question']}", "", f"**仮説**: {exp['hypothesis']}", "", f"**読み方**: {exp['reading']}", "",
-       "値は、繰り返しの中央値 [最小–最大]。baseline 未達の run は表に含めているが、下の警告を確認すること。", "",
+       "値は、繰り返しの中央値 [最小–最大]。baseline 未達の run は表に含めているが、下の警告を確認すること。", "接続数は **Sum(Proxy 全体)を主**とする。Max は、前回までの結果と比べるための列(Proxy の 1 ノード分しか見ない: docs/metrics.md)。", "",
        "| run | n | " + " | ".join(c[1] for c in cols) + " |", "|---|---|" + "---|" * len(cols)]
 for rid in [r["id"] for r in exp["runs"]]:
     rs = runs.get(rid, [])
     out.append(f"| {rid} | {len(rs)} | " + " | ".join(cell(rs, c[0]) for c in cols) + " |")
-hdr = ["run", "rep", "status", "client_max", "db_max", "pinned_max", "pin_ratio", "cpu_p50", "cpu_p95", "cpu_max", "borrowlat_max_us", "hold_avg_ms", "hold_p99_ms", "wait_count", "max_idle_closed", "errors", "db_minus_client_max", "settle_min"]
-keys = ["run", "rep", "status", "client", "db", "pinned", "pin_ratio", "cpu_p50", "cpu_p95", "cpu_max", "borrowlat_max", "hold_avg_ms", "hold_p99_ms", "wait_count", "max_idle_closed", "errors", "excess", "settle"]
+hdr = ["run", "rep", "status", "client_sum", "db_sum", "pinned_sum", "db_minus_client_sum", "client_max", "db_max", "pinned_max", "pin_ratio", "cpu_p50", "cpu_p95", "cpu_max", "borrowlat_max_us", "hold_avg_ms", "hold_p99_ms", "wait_count", "max_idle_closed", "errors", "db_minus_client_max", "settle_min"]
+keys = ["run", "rep", "status", "client_sum", "db_sum", "pinned_sum", "excess_sum", "client", "db", "pinned", "pin_ratio", "cpu_p50", "cpu_p95", "cpu_max", "borrowlat_max", "hold_avg_ms", "hold_p99_ms", "wait_count", "max_idle_closed", "errors", "excess", "settle"]
 fmt = lambda v: "" if v is None else ("%g" % round(v, 3) if isinstance(v, float) else str(v))
 rows = [[fmt(r.get(k)) for k in keys] for rid in [x["id"] for x in exp["runs"]] for r in runs.get(rid, [])]
 (d / "runs.csv").write_text("\n".join([",".join(hdr)] + [",".join(x) for x in rows]) + "\n")

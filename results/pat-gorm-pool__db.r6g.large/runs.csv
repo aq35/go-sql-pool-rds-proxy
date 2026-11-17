@@ -1,4 +1,4 @@
-run,識別,n,result,ms,peak_in_use,proxy_db_max,proxy_pinned_max,proxy_intx_max,proxy_client_max
+run,識別,n,result,ms,peak_in_use,proxy_client_max,proxy_dbconn_max,proxy_pinned_max,proxy_intx_max
 gorm,max_open=2 test=tx-uses-tx,3,ok,41.2 [18.37–54.13],1,0,0,0,0
 gorm,max_open=2 test=tx-uses-db-inside,3,ok,78.19 [59.52–175],2,0,0,0,0
 gorm,max_open=2 test=preload-two,3,ok,24.29 [14–37.88],1,0,0,0,0

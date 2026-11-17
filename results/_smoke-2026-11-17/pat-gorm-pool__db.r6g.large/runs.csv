@@ -1,13 +1,13 @@
-run,識別,n,result,ms,peak_in_use,proxy_condition,proxy_client_max,proxy_client_sum,proxy_dbconn_max,proxy_dbconn_sum,proxy_pinned_max,proxy_intx_max,threads_running_max,threads_running_avg,threads_connected_max,db_questions_per_s_all_sessions,client_cpu_avg,client_cpu_max
-gorm,max_open=2 test=tx-uses-tx,1,ok,26.6,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=2 test=tx-uses-db-inside,1,ok,1137,2,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=2 test=preload-two,1,ok,18.65,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=2 test=create-with-associations,1,ok,31.97,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=2 test=hook-uses-tx,1,ok,29.63,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=2 test=hook-uses-global-db,1,ok,29.52,2,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=1 test=tx-uses-tx,1,ok,26.18,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=1 test=tx-uses-db-inside,1,blocked,3001,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=1 test=preload-two,1,ok,27.57,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=1 test=create-with-associations,1,ok,31.11,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=1 test=hook-uses-tx,1,ok,25.5,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
-gorm,max_open=1 test=hook-uses-global-db,1,blocked,3000,1,warm,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+run,識別,n,result,ms,peak_in_use,proxy_condition,proxy_client_max,proxy_client_sum,proxy_client_avg,proxy_dbconn_max,proxy_dbconn_sum,proxy_dbconn_avg,proxy_pinned_max,proxy_intx_max,threads_running_max,threads_running_avg,threads_connected_max,db_questions_per_s_all_sessions,client_cpu_avg,client_cpu_max
+gorm,max_open=2 test=tx-uses-tx,1,ok,26.6,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=2 test=tx-uses-db-inside,1,ok,1137,2,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=2 test=preload-two,1,ok,18.65,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=2 test=create-with-associations,1,ok,31.97,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=2 test=hook-uses-tx,1,ok,29.63,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=2 test=hook-uses-global-db,1,ok,29.52,2,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=1 test=tx-uses-tx,1,ok,26.18,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=1 test=tx-uses-db-inside,1,blocked,3001,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=1 test=preload-two,1,ok,27.57,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=1 test=create-with-associations,1,ok,31.11,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=1 test=hook-uses-tx,1,ok,25.5,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5
+gorm,max_open=1 test=hook-uses-global-db,1,blocked,3000,1,warm,0,0,0,0,0,0,0,0,3,2.12,12,24,0.6,3.5

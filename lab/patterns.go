@@ -421,7 +421,7 @@ func runPatternsCmd(args []string) error {
 	fs := newFlagSet("patterns")
 	var cf commonFlags
 	cf.register(fs, 10*time.Minute)
-	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap")
+	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle")
 	tlsF := fs.String("tls", "", "\"\" (follow the infrastructure: skip-verify if the Proxy requires TLS) | none (plain TCP, on purpose) | skip-verify (TLS, certificate not verified)")
 	proxyAZ := fs.String("proxy-az", "", "same | cross (PROXY_IP_SAME / PROXY_IP_CROSS)")
 	conns := fs.Int("conns", 32, "warmup: concurrent queries / pool size; pin-patterns: workers; stampede: pool size")
@@ -512,8 +512,14 @@ func runPatternsCmd(args []string) error {
 		return patPin(ctx, t, *tlsF, *variant, *conns, *think, cf.duration, *rows)
 	case "stampede":
 		return patStampede(ctx, t, *tlsF, *variant, *conns, *lifetime, *think, cf.duration)
+	case "idle":
+		// No client at all for the whole run. The Proxy still keeps some connections to Aurora (earlier: "5"); this run records how many
+		// the whole Proxy keeps (CloudWatch Sum / Average / Maximum side by side), and how many nodes report (Sum / Average).
+		result("mode", "idle", "note", "no_client_connections")
+		<-ctx.Done()
+		return nil
 	}
-	return fmt.Errorf("--mode must be warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap")
+	return fmt.Errorf("--mode must be warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle")
 }
 
 // ---- warmup -------------------------------------------------------------------------------------------------------------
