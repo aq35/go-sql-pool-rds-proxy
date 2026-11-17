@@ -29,3 +29,8 @@ results/_smoke-*/*__*/expected.json
 results/_smoke-2026-11-17/*__*/*.r*/
 results/_smoke-2026-11-17/*__*/status.json
 results/_smoke-2026-11-17/*__*/expected.json
+
+# any results/_*/ folder (smoke tests, flawed first runs): raw runs stay local
+results/_*/*__*/*.r*/
+results/_*/*__*/status.json
+results/_*/*__*/expected.json

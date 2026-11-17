@@ -1,5 +1,0 @@
-2026/11/17 04:30:04 TRIGGER-EVENT connecting mode=getlock k=10
-2026/11/17 04:30:04 TRIGGER-EVENT connected mode=getlock k=10
-2026/11/17 04:30:24 TRIGGER-EVENT action-done mode=getlock k=10
-2026/11/17 04:34:24 TRIGGER-EVENT sockets-closed mode=getlock k=10
-2026/11/17 04:39:24 TRIGGER-EVENT end mode=getlock k=10

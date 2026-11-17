@@ -1,3 +1,0 @@
-2026/11/17 03:22:30 patterns mode=idle tls="" proxy_az=""
-2026/11/17 03:22:30 PATTERN-RESULT mode=idle note=no_client_connections
-2026/11/17 03:31:30 PATTERN-AURORA threads_running_max=3 threads_running_avg=2.00 threads_connected_max=10 db_questions_per_s_all_sessions=11 client_cpu_avg=0.0 client_cpu_max=2.3
