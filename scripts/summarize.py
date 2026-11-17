@@ -22,7 +22,8 @@ def analyse(rdir):
     mx = lambda xs: max(xs) if xs else None
     db, cl = series(m, "dbconn"), dict(series(m, "client"))
     floor = meta["baseline"]["floor"]
-    settle = next((round((t - end).total_seconds() / 60, 1) for t, v in db if t >= end and v <= floor), None)
+    # minutes until the WHOLE Proxy (Sum) is back at the floor; runs from before Sum was collected fall back to Maximum with their old floor
+    settle = next((round((t - end).total_seconds() / 60, 1) for t, v in (series(m, "dbconn__Sum") or db) if t >= end and v <= floor), None)
     cpu = [v for t, v in series(m, "cpu") if start <= t <= end]
     allowed = mx([v for t, v in series(m, "allowed") if start <= t <= end]) or None
     pct = lambda xs, q: sorted(xs)[min(len(xs) - 1, int(q * len(xs)))] if xs else None
@@ -242,7 +243,7 @@ for rdir in sorted(d.glob("*.r*")):
 
 cols = [("client_sum", "ClientConn Sum最大"), ("db_sum", "DBConn Sum最大"), ("pinned_sum", "Pinned Sum最大"), ("borrowed_sum", "Borrowed Sum最大"),
         ("excess_sum", "DB−Client Sum最大"), ("client", "ClientConn Max"), ("db", "DBConn Max"), ("pinned", "Pinned Max"), ("borrowed", "Borrowed Max"),
-        ("excess", "DB−Client Max"), ("settle", "下限へ戻る(分・Max基準)"), ("hold_avg_ms", "平均(ms)"), ("hold_p99_ms", "p99(ms)"),
+        ("excess", "DB−Client Max"), ("settle", "下限へ戻る(分・Proxy全体 Sum)"), ("hold_avg_ms", "平均(ms)"), ("hold_p99_ms", "p99(ms)"),
         ("max_idle_closed", "idle closed"), ("failed", "失敗")]
 cols = [c for c in cols if any(r.get(c[0]) is not None for rs in runs.values() for r in rs)]
 

@@ -47,3 +47,14 @@
 | `CPUUtilization` | 1 分 | 参考のみ。run の間隔が 1 分未満だと、前後の run が混ざる |
 | Enhanced Monitoring の `cpuUtilization.total` | **1 秒** | run ごとの Aurora CPU(CloudWatch Logs `RDSOSMetrics`)。`os_cpu.json` に保存 |
 | `Threads_running`、`Threads_connected`、`Questions` | 1 秒(自分で取得) | Aurora に直結した管理接続で、`performance_schema.global_status` を読む。**`Questions` は DB 全体のカウンタで、監視用のクエリや他のセッションも含む**(アプリが発行した QPS ではない) |
+
+## 「下限の 5 本」は、前の実験の残りだった(2026-11-17)
+
+前回までは、「Proxy は、クライアントがいなくても、Aurora への接続を 5 本は保持する(下限)」とし、run の前に「`DatabaseConnections`(Maximum)が 6 以下に戻るまで待つ」としていた。`Sum` で測り直すと、次のとおりだった(`results/_run1-2026-11-17/`、各 n=1〜2):
+
+- **未使用の Proxy は 0 本**(`Max`、`Sum`、`Average` のすべて)。**ログインだけでも 0 本**。
+- **ピン留めされた接続は、クライアントが閉じたあとも、裏に残る**(クライアント 0 で、`Sum` = 10)。
+- したがって、前回の「5 本」は、**常にある下限ではなく、前の実験の残り**(1 ノード分の `Maximum` で見た値)だった。
+- **待ちの基準の欠陥**: `Maximum ≤ 6` で「戻った」と判定すると、`Sum` で 10 本が残っていても、`Maximum` は 5〜6 なので、**前の run の残りの上で、次の run が始まる**。`wait_baseline` を、**`Sum ≤ 2`** に変えた(`lab/exp.py`)。
+
+前回までの接続数の結論(元のリポジトリの A1〜A9、B1〜B5)は、この欠陥のある待ちと、`Maximum` で測ったもの。`Sum` と新しい待ちで測り直すまで、暫定。

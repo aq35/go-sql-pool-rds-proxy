@@ -1,0 +1,5 @@
+2026/11/17 04:06:39 TRIGGER-EVENT connecting mode=select1 k=10
+2026/11/17 04:06:39 TRIGGER-EVENT connected mode=select1 k=10
+2026/11/17 04:06:59 TRIGGER-EVENT action-done mode=select1 k=10
+2026/11/17 04:10:59 TRIGGER-EVENT sockets-closed mode=select1 k=10
+2026/11/17 04:15:59 TRIGGER-EVENT end mode=select1 k=10

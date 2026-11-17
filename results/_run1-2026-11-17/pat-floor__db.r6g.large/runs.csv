@@ -1,0 +1,2 @@
+run,識別,n,note,proxy_condition,proxy_client_max,proxy_client_sum,proxy_client_avg,proxy_dbconn_max,proxy_dbconn_sum,proxy_dbconn_avg,proxy_pinned_max,proxy_intx_max,aurora_cpu_p50,aurora_cpu_max,threads_running_max,threads_running_avg,threads_connected_max,db_questions_per_s_all_sessions,client_cpu_avg,client_cpu_max
+no-clients,,2,no_client_connections,settled,0,0,0,0,0,0,0,0,4.3 [4.1–4.5],56.75 [56.3–57.2],3,2,10,11,0,4.3 [2.3–6.3]

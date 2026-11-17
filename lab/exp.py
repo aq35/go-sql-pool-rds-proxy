@@ -22,7 +22,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE / "out"
 EXPS = HERE / "experiments"
 REQUIRED = ["name", "question", "hypothesis", "reading", "scenario", "runs"]
-FLOOR_DEFAULT = 6          # Proxy keeps ~5 backend connections with no clients (measured)
+FLOOR_DEFAULT = 2          # whole-Proxy DatabaseConnections (Sum) a run may start with. An unused Proxy has 0; the old "5" was a leftover (docs/metrics.md)
 BASELINE_TIMEOUT_S = 20 * 60
 
 
@@ -59,15 +59,23 @@ def cw_series(metric, start, end, instance=False, cluster=False, stat=None):
     return [[t, v] for t, v in zip(res["Timestamps"], res["Values"])]
 
 
+def baseline_met(last, floor):
+    """True if the last two 1-minute points exist and are both <= floor."""
+    return len(last) == 2 and max(last) <= floor
+
+
 def wait_baseline(floor):
-    """Block until the last two 1-minute DatabaseConnections points are <= floor. Returns a record for meta.json."""
+    """Block until the last two 1-minute DatabaseConnections points of the WHOLE Proxy (statistic Sum) are <= floor. Returns a record for
+    meta.json. It used to compare the Maximum (one Proxy node) with 6: with 10 connections left over, the largest node shows 5-6, so a run
+    started on the previous run's leftovers (smoke / trigger-isolation, 2026-11-17: after pinned runs the Sum stayed at 10 while the Maximum
+    read 5-6). A Proxy that has had no client has 0 (pat-floor), so the default floor is small."""
     dbm = next(m for m in METRICS["metrics"] if m["key"] == "dbconn")
     t0 = time.time(); last = None
     while time.time() - t0 < BASELINE_TIMEOUT_S:
         try:
-            pts = cw_series(dbm, now() - dt.timedelta(minutes=8), now())
+            pts = cw_series(dbm, now() - dt.timedelta(minutes=8), now(), stat="Sum")
             last = [v for _, v in pts[-2:]]
-            if len(last) == 2 and max(last) <= floor:
+            if baseline_met(last, floor):
                 return {"floor": floor, "last_points": last, "waited_s": int(time.time() - t0), "unmet": False}
         except Exception as e:
             log("baseline check failed:", e)
