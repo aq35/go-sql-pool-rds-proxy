@@ -1,8 +1,8 @@
 {
  "name": "pat-warmup-proxycold",
- "question": "Proxy→Aurora の接続も冷えた状態(Proxy の裏の接続が下限に戻った後)で、新しいプールに 32 同時のクエリが来るとき、PingContext の並列ウォームアップは、最初の波の遅延をどれだけ縮めるか",
+ "question": "[非推奨: 前提が成り立たない] Proxy→Aurora の接続も冷えた状態(Proxy の裏の接続が下限に戻った後)で、新しいプールに 32 同時のクエリが来るとき、PingContext の並列ウォームアップは、最初の波の遅延をどれだけ縮めるか",
  "hypothesis": "Proxy 側も冷えていると、温めない場合の最初の波は、前回(Proxy 側が温まったまま、約 54 ms)より遅い。温めた場合は、Ping だけでは Proxy が Aurora の接続を作らない(Ping 1 回では DB 接続が増えない、という先行調査)ので、温めても、最初のクエリの波で Proxy→Aurora の接続の確立が起き、遅れが残る可能性がある。",
- "reading": "run(cold と warm)ごとに、w1_p50_ms_med、w1_max_ms_med を比べ、前回の pat-warmup(Proxy が温まったまま)と比べる。試行の間は 6.5 分(Proxy→Aurora が下限の 5 本に戻るのを待つ)。試行は 4 回。",
+ "reading": "**この実験は、キャンペーンから外した。** 「Proxy→Aurora の接続も冷えた状態」を作るために、試行の間を 6.5 分空けたが、Proxy は、使われたあと、アイドルの接続を 10 本(MaxIdleConnectionsPercent 10% × max_connections 100)保ち続けるので、待っても冷えない(docs/metrics.md)。冷えているのは、デプロイ直後の、一度も使われていない Proxy だけ(その状態での測定は、デプロイ直後の最初の run でだけ可能)。 run(cold と warm)ごとに、w1_p50_ms_med、w1_max_ms_med を比べ、前回の pat-warmup(Proxy が温まったまま)と比べる。試行の間は 6.5 分(Proxy→Aurora が下限の 5 本に戻るのを待つ)。試行は 4 回。",
  "scenario": "patterns",
  "common": [
   "--mode=warmup",

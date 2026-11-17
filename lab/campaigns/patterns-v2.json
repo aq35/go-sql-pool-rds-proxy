@@ -1,6 +1,6 @@
 {
  "name": "patterns-v2",
- "description": "patterns の再実行と補強: Aurora の CPU を 1 秒値で取る(Enhanced Monitoring)。断定できなかった点を、条件を絞って確かめる(長いクエリのタイムアウト、アイドルタイムアウトの再接続数、ピン留めの原因 SET、Proxy が冷えたコールドスタート、条件をそろえた stampede)。約 8 時間",
+ "description": "patterns の再実行と補強: Aurora の CPU を 1 秒値で取る(Enhanced Monitoring)。断定できなかった点を、条件を絞って確かめる(長いクエリのタイムアウト、アイドルタイムアウトの再接続数、ピン留めの原因 SET、Proxy が冷えたコールドスタート、条件をそろえた stampede)。約 8 時間。pat-warmup-proxycold は外した(前提が成り立たない: Proxy は、使われたあと、アイドルの接続を 10 本保ち続けるので、待っても「冷えた状態」にならない。冷えているのは、デプロイ直後の、一度も使われていない Proxy だけ)",
  "steps": [
   {
    "aurora_class": "db.r6g.large"
@@ -24,9 +24,6 @@
   },
   {
    "exp": "pat-warmup"
-  },
-  {
-   "exp": "pat-warmup-proxycold"
   }
  ]
 }
