@@ -128,3 +128,21 @@ make deploy
 make campaign CAMPAIGN=patterns
 make finish CAMPAIGN=patterns DESTROY_AFTER=yes   # 全部取得できたときだけ削除
 ```
+
+## 次のフェーズ: DB の理解を深める(`deepen-v1`)
+
+`full-v2` までの実験は、**接続の数と、Go のプール設定**に偏っていた。DB と Proxy が「限界にぶつかるとき」と、運用で起きることを足す。キャンペーン `lab/campaigns/deepen-v1.json`(約 9〜10 時間)。
+
+| 実験 | 問い | 状況 |
+|---|---|---|
+| `pat-control` | 何も変えない同じ条件の繰り返しで、結果はどれだけばらつくか(ほかの「差」の物差し) | 未実行 |
+| `pinning-impact` | ピン留めが Proxy の上限(80)に近づく / 超えると、何が起きるか(係数 α) | 未実行。75 本と 90 本の水準を足した |
+| `proxy-vs-direct` | Proxy が足す遅延。クライアント接続が多いときの、Aurora の接続数(多重化) | 未実行 |
+| `pat-driver-ab` | ドライバ v1.10.1 と v1.8.1 で、再接続・ピン留め・接続の確立は変わるか | 未実行 |
+| `pat-contention` | CPU が律速でないとき(行ロックの競合、トランザクションの保持)、プールはどう効くか | 未実行(ローカルで、動作と理屈どおりの値を確認: hot-row 1,479 対 spread 7,264 ops/s、tx-hold 78 ≒ プール 8 ÷ 0.1 秒) |
+| `pat-limit` | 直結の `max_connections`、Proxy のアイドル接続の数、Proxy の上限を超えた忙しいクライアント(借用タイムアウト) | 未実行(ローカルで、直結の上限 → エラー 1040 を確認) |
+| `pat-mixed` | 本番に近い混在負荷と、サイト数(GET_LOCK の専用接続)。GORM の既定とルールの値の比較 | 未実行(ローカルで動作を確認) |
+| `pat-reboot` | writer の再起動(フェイルオーバーの代わり)で、エラーと回復。Proxy と直結、ConnMaxLifetime | 未実行(ローカルで、`docker restart` による動作を確認: 停止 4 秒、新しい接続の試行 536 回) |
+| `patterns --mode=pitfalls` | `database/sql` の落とし穴(`rows.Close()` 忘れ、未完のトランザクション、`SET` のもれ、キャンセルでの接続の破棄) | **実施済み**: 実際の MySQL で 13 件の期待がすべて通る。CI でも毎回動かす |
+
+**ローカルで確認できること**(`pitfalls`、`contention`、`limit` の直結、`mixed`、`reboot-recover` の動作)と、**実機でしか分からないこと**(Proxy の挙動、再起動の実際の時間と回復、Proxy 経由のエラーの種類)を分けて、結果を書く。

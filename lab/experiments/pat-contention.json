@@ -1,0 +1,64 @@
+{
+ "name": "pat-contention",
+ "question": "CPU が律速でないとき(ロック待ち、トランザクションの保持)、接続数(プールの大きさ)は、スループットに、どう効くか",
+ "hypothesis": "同じ行を更新する競合(hot-row)では、ワーカー数や、プールの大きさを増やしても、スループットは増えず(行ロックで直列化)、Aurora の CPU は低いまま、InUse は、プールいっぱいまで使われる。別々の行(spread-rows)では、スループットが、はるかに高い。トランザクションが接続を保持する(tx-hold)場合、スループットは、プールの大きさ ÷ 保持時間(リトルの法則)で決まり、プールを大きくすると、その分、増える。",
+ "reading": "hot-row-16 と spread-16 を比べる(同じ接続数で、ops_per_s が何倍違うか。aurora_cpu_p50 / max が低いか)。hot-row-64 が、hot-row-16 より増えないか。tx-hold-pool8 と tx-hold-pool20 は、ops_per_s ≒ max_open ÷ hold(100 ms)か(8 なら 80、20 なら 200)。in_use_avg、wait_count、p99 も読む。errors の種類(mysql-1213 デッドロック、1205 ロック待ちのタイムアウト)も。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=contention",
+  "--duration=150s"
+ ],
+ "repeat": 2,
+ "floor": 100,
+ "observe_after_s": 30,
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
+ ],
+ "runs": [
+  {
+   "id": "hot-row-16",
+   "args": [
+    "--variant=hot-row",
+    "--conns=16",
+    "--max-open=16"
+   ]
+  },
+  {
+   "id": "hot-row-64",
+   "args": [
+    "--variant=hot-row",
+    "--conns=64",
+    "--max-open=64"
+   ]
+  },
+  {
+   "id": "spread-16",
+   "args": [
+    "--variant=spread-rows",
+    "--conns=16",
+    "--max-open=16"
+   ]
+  },
+  {
+   "id": "tx-hold-pool8",
+   "args": [
+    "--variant=tx-hold",
+    "--conns=40",
+    "--max-open=8",
+    "--hold=100ms"
+   ]
+  },
+  {
+   "id": "tx-hold-pool20",
+   "args": [
+    "--variant=tx-hold",
+    "--conns=40",
+    "--max-open=20",
+    "--hold=100ms"
+   ]
+  }
+ ]
+}

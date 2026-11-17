@@ -385,6 +385,7 @@ def _run_experiment(exp, repeat=0, only=None):
                 proxy_apply(want) if want else proxy_restore() if RESTORE.exists() else None
             except Exception as ex:
                 log("proxy setting failed:", ex); failed.append(rid + ":proxy"); continue
+            if e.get("wait_writer_available"): ensure_class(cls)       # a previous run may have rebooted the writer: wait until it is available again (+120 s)
             if e.get("pre_gap_s"): time.sleep(e["pre_gap_s"])    # >= 2 min keeps 1-minute CloudWatch points of neighbouring runs apart
             base = wait_baseline(e.get("floor", FLOOR_DEFAULT))
             args = [f"--scenario={e['scenario']}"] + e.get("common", []) + r.get("args", [])

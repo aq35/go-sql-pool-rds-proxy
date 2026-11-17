@@ -421,7 +421,7 @@ func runPatternsCmd(args []string) error {
 	fs := newFlagSet("patterns")
 	var cf commonFlags
 	cf.register(fs, 10*time.Minute)
-	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls")
+	mode := fs.String("mode", "", "warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls | reboot-recover | limit | contention | mixed")
 	tlsF := fs.String("tls", "", "\"\" (follow the infrastructure: skip-verify if the Proxy requires TLS) | none (plain TCP, on purpose) | skip-verify (TLS, certificate not verified)")
 	proxyAZ := fs.String("proxy-az", "", "same | cross (PROXY_IP_SAME / PROXY_IP_CROSS)")
 	conns := fs.Int("conns", 32, "warmup: concurrent queries / pool size; pin-patterns: workers; stampede: pool size")
@@ -442,6 +442,15 @@ func runPatternsCmd(args []string) error {
 	think := fs.Duration("think", 50*time.Millisecond, "pin-patterns / stampede: pause between queries per worker")
 	gap := fs.Duration("gap", 30*time.Second, "idle-gap: pause between queries of one worker")
 	idleTime := fs.Duration("idle-time", 0, "idle-gap: SetConnMaxIdleTime (0 = none)")
+	rebootAfter := fs.Duration("reboot-after", time.Minute, "reboot-recover: when (after the start) the writer is rebooted")
+	rebootCmd := fs.String("reboot-cmd", `aws rds reboot-db-instance --db-instance-identifier "$WRITER_INSTANCE_ID" --query DBInstance.DBInstanceStatus --output text`, "reboot-recover: shell command that restarts the database (locally: docker restart <name>)")
+	hold := fs.Duration("hold", 60*time.Second, "limit: how long connections are held / how long each busy query runs; contention (tx-hold): time a transaction holds its connection")
+	maxIdleF := fs.Int("max-idle", 2, "mixed: SetMaxIdleConns per container")
+	containers := fs.Int("containers", 3, "mixed: number of containers (one pool each)")
+	sites := fs.Int("sites", 10, "mixed: sites, each with one dedicated GET_LOCK connection")
+	webRPS := fs.Int("web-rps", 100, "mixed: web requests per second")
+	slowEvery := fs.Duration("slow-every", 30*time.Second, "mixed: pause of the slow workers")
+	fastEvery := fs.Duration("fast-every", time.Second, "mixed: pause of the fast workers")
 	dedicated := fs.Bool("dedicated", false, "idle-gap: every worker owns one db.Conn (idle time of each connection = its own gap)")
 	wquery := fs.String("query", "select1", "warmup: select1 | pk (a primary-key lookup on cap_items)")
 	_ = fs.Parse(args)
@@ -520,8 +529,20 @@ func runPatternsCmd(args []string) error {
 		return nil
 	case "pitfalls":
 		return patPitfalls(ctx, t, *tlsF)
+	case "reboot-recover":
+		return patRebootRecover(ctx, t, *tlsF, *conns, *think, *rebootAfter, *lifetime, *rebootCmd, cf.duration)
+	case "limit":
+		return patLimit(ctx, t, *tlsF, *variant, *conns, *hold)
+	case "contention":
+		return patContention(ctx, t, *tlsF, *variant, *conns, mo, *hold, cf.duration, *rows)
+	case "mixed":
+		wm := *variant
+		if wm == "" {
+			wm = "serial"
+		}
+		return patMixed(ctx, t, *tlsF, *containers, mo, *maxIdleF, *sites, *webRPS, *perReq, wm, *slowEvery, *fastEvery, cf.duration, *rows)
 	}
-	return fmt.Errorf("--mode must be warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls")
+	return fmt.Errorf("--mode must be warmup | serial-parallel | timeout-cascade | gorm-pool | pin-patterns | stampede | idle-gap | idle | pitfalls | reboot-recover | limit | contention | mixed")
 }
 
 // ---- warmup -------------------------------------------------------------------------------------------------------------

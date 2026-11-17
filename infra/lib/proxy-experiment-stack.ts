@@ -190,6 +190,8 @@ export class ProxyExperimentStack extends cdk.Stack {
     // which is harmless for destroy.
     const writerArn = `arn:aws:rds:${this.region}:${this.account}:db:${cluster.instanceIdentifiers[0]}`;
     role.addToPolicy(new iam.PolicyStatement({ actions: ['rds:ModifyDBInstance', 'rds:DescribeDBInstances'], resources: [writerArn] }));
+    // pat-reboot restarts the writer under load (a stand-in for a failover: this cluster has a single instance). Only this writer.
+    role.addToPolicy(new iam.PolicyStatement({ actions: ['rds:RebootDBInstance'], resources: [writerArn] }));
 
     const CLIENT_ID = 'ExperimentClient'; // stable: lab source changes must not replace the instance (and its raw results)
     const userData = ec2.UserData.forLinux();

@@ -1,0 +1,35 @@
+{
+ "name": "deepen-v1",
+ "description": "DB の理解を深める実験: 対照の繰り返し(ばらつき)、Proxy の飽和(pinning-impact)、Proxy あり/なし、ドライバの A/B、CPU 以外の律速、上限(直結、Proxy)、混在負荷とサイト数、writer の再起動(最後。writer が再起動する)。約 9〜10 時間。平文(requireTls=false)で、full-v2 と同じ条件",
+ "steps": [
+  {
+   "aurora_class": "db.r6g.large"
+  },
+  {
+   "exp": "pat-control"
+  },
+  {
+   "exp": "pinning-impact"
+  },
+  {
+   "exp": "proxy-vs-direct"
+  },
+  {
+   "exp": "pat-driver-ab",
+   "repeat": 1
+  },
+  {
+   "exp": "pat-contention"
+  },
+  {
+   "exp": "pat-limit"
+  },
+  {
+   "exp": "pat-mixed"
+  },
+  {
+   "exp": "pat-reboot",
+   "repeat": 1
+  }
+ ]
+}

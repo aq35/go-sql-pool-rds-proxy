@@ -1,0 +1,47 @@
+{
+ "name": "pat-reboot",
+ "question": "writer を再起動(フェイルオーバーの代わり)すると、定常負荷のクライアントは、どれだけの間、どんなエラーになり、どう回復するか。Proxy 経由と直結で違うか。ConnMaxLifetime(なし、30 秒)で、回復は変わるか。障害中に、新しい接続の試行は、どれだけ増えるか",
+ "hypothesis": "Proxy 経由でも直結でも、再起動の間(1〜数分)は、クエリが失敗する。直結は、接続が切れるので、接続の無効エラー(invalid connection など)が出て、プールは接続を作り直し、回復する。Proxy 経由は、Proxy が接続を保持するので、エラーの種類が違い、回復が早い(または遅い)可能性がある。ConnMaxLifetime は、再起動の回復には、ほとんど影響しない(接続は、切れた時点で破棄されるため)。障害中、ワーカーは、毎回、再接続を試すので、新しい接続の試行は、大きく増える(再接続の嵐)。",
+ "reading": "run(proxy-* と direct-*、life0 と life30s)ごとに、first_error_at_s、recovered_at_s、outage_s(5 秒続けて成功が続いた最初の秒までの差)、errors、error_kinds、new_connections を比べる。reboot_issued_at_s で、再起動の命令の時刻と、最初のエラーの時刻のずれも読む。1 回の再起動の所要時間は、Aurora の状態に依存するので、揺らぐ(repeat 2 の範囲)。per-second の ok / err は、client.log の PATTERN-SECOND 行。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=reboot-recover",
+  "--conns=10",
+  "--think=50ms",
+  "--reboot-after=60s",
+  "--duration=12m"
+ ],
+ "repeat": 2,
+ "floor": 100,
+ "observe_after_s": 120,
+ "wait_writer_available": true,
+ "required_metrics": [],
+ "runs": [
+  {
+   "id": "proxy-life0",
+   "args": [
+    "--lifetime=0"
+   ]
+  },
+  {
+   "id": "proxy-life30s",
+   "args": [
+    "--lifetime=30s"
+   ]
+  },
+  {
+   "id": "direct-life0",
+   "target": "cluster",
+   "args": [
+    "--lifetime=0"
+   ]
+  },
+  {
+   "id": "direct-life30s",
+   "target": "cluster",
+   "args": [
+    "--lifetime=30s"
+   ]
+  }
+ ]
+}

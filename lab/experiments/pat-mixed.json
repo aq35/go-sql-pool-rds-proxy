@@ -1,0 +1,96 @@
+{
+ "name": "pat-mixed",
+ "question": "本番に近い混在負荷(30 秒おきのワーカー 3、1 秒おきのワーカー 6、Web 100 req/s × 1 リクエスト 6 クエリ、サイトごとに GET_LOCK の専用接続 1 本)で、Go のプール設定(GORM 既定: MaxOpen 100 / MaxIdle 2 と、ルールから出した値: MaxOpen 22 / MaxIdle 10)と、Web のクエリの流し方(直列、並列)で、遅延、エラー、接続数は、どう変わるか。サイトを 10 から 40 に増やすと、何が起きるか",
+ "hypothesis": "GORM の既定(MaxIdle 2)は、バーストのたびに接続を閉じて作り直す(max_idle_closed が多い)ので、Web の p99 が悪化する。ルールの値(MaxOpen 22、MaxIdle 10)は、再接続が少なく、p99 が安定する。サイト(GET_LOCK のピン留め)が 10 から 40 に増えると、Proxy の裏の接続のうち、ピン留めの分が増え、通常のクエリが使える接続が減るので、サイト 40 では、待ち(pool_wait_count)と p99 が、悪化する。並列は、プールの小さい設定で、p99 が悪化しやすい。",
+ "reading": "同じ sites で、gorm-default と rule、serial と parallel を比べる。class=web の p99_ms と errors、class=pools の pool_wait_count、max_idle_closed、new_connections_pools、pool_in_use_max。Proxy 側: proxy_pinned_sum(サイトの数 + α)、proxy_dbconn_sum、aurora_cpu_*。サイト 40 の run で、ピン留めが Proxy の上限(80)に対して何割か。繰り返しが 1 回なので、pat-control のばらつきと比べて、差を判断する。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=mixed",
+  "--containers=3",
+  "--web-rps=100",
+  "--queries-per-request=6",
+  "--duration=7m"
+ ],
+ "repeat": 1,
+ "observe_after_s": 60,
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
+ ],
+ "runs": [
+  {
+   "id": "sites10-gorm-default-serial",
+   "args": [
+    "--variant=serial",
+    "--sites=10",
+    "--max-open=100",
+    "--max-idle=2"
+   ]
+  },
+  {
+   "id": "sites10-gorm-default-parallel",
+   "args": [
+    "--variant=parallel",
+    "--sites=10",
+    "--max-open=100",
+    "--max-idle=2"
+   ]
+  },
+  {
+   "id": "sites10-rule-serial",
+   "args": [
+    "--variant=serial",
+    "--sites=10",
+    "--max-open=22",
+    "--max-idle=10"
+   ]
+  },
+  {
+   "id": "sites10-rule-parallel",
+   "args": [
+    "--variant=parallel",
+    "--sites=10",
+    "--max-open=22",
+    "--max-idle=10"
+   ]
+  },
+  {
+   "id": "sites40-gorm-default-serial",
+   "args": [
+    "--variant=serial",
+    "--sites=40",
+    "--max-open=100",
+    "--max-idle=2"
+   ]
+  },
+  {
+   "id": "sites40-gorm-default-parallel",
+   "args": [
+    "--variant=parallel",
+    "--sites=40",
+    "--max-open=100",
+    "--max-idle=2"
+   ]
+  },
+  {
+   "id": "sites40-rule-serial",
+   "args": [
+    "--variant=serial",
+    "--sites=40",
+    "--max-open=22",
+    "--max-idle=10"
+   ]
+  },
+  {
+   "id": "sites40-rule-parallel",
+   "args": [
+    "--variant=parallel",
+    "--sites=40",
+    "--max-open=22",
+    "--max-idle=10"
+   ]
+  }
+ ]
+}
