@@ -120,13 +120,29 @@
 3. **`pinned`、`intx`、`borrowed` を、必須の系列にしたのが誤り。** 値が 0 を超えないとき、CloudWatch は**点を返さない**(エラーではない)。→ 点がない = 0 として扱う。エラーがある場合だけ、欠損とする。
 4. **結果の取得が、別のキャンペーンの結果を、黙って上書きした。** スモークの `pat-pin/base.r1` が、前回の本番の同名の run の生データを上書きした。→ 取得は、別の run を上書きしない(拒否する)。`LAB_RESULTS=results/<名前>` で、保存先を分けられる。**前回の本番の `pat-pin/base.r1` の生データは、失われた**(集計の `summary.md` と `runs.csv` は、Git にあり、無事)。
 
+### 2 回目のスモークテスト(2026-11-17): 残りの確認
+
+`make deploy CDK_ARGS='-c proxyAuth=sha2'` で、もう一度デプロイして確認し、削除した。結果は `results/_smoke-2026-11-17/`。**新しい不具合は、見つからなかった**(1 回目に直したものが、実機で通った)。
+
+| 項目 | 結果 |
+|---|---|
+| `-c proxyAuth=sha2`(TLS 必須と組み合わせ)でデプロイできる | できた。`describe-db-proxies`: `RequireTLS=True`、`ClientPasswordAuthType=MYSQL_CACHING_SHA2_PASSWORD` |
+| 新しいドライバ(v1.10.1)が、`caching_sha2_password` の Proxy に接続できる | できた。`pat-gorm-pool` が、失敗 0、無効 0 で完了。結果(固まるのは `max_open=1` の 2 つだけ)は、`native` のときと同じ。`meta.json` に `infra.proxy_auth = sha2` が残った |
+| `rds:ModifyDBProxyTargetGroup` の実呼び出し | 通った。`MaxIdleConnectionsPercent` を 10 → 20 → 10 と変更して、復元できた(各変更の反映に約 1.5〜2 分) |
+| `rds:ModifyDBInstance` の実呼び出し | **この書き込みインスタンス: 成功**(害のない属性の指定で、状態は `available` のまま)。**別のインスタンス: 実際に `AccessDenied`**(IAM のシミュレーションではなく、本物の拒否) |
+| `make push` の 2 回目 | 通った。結果のある `out/` が引き継がれ(`meta.json` のチェックサムが同一)、古い版が `lab.old` に残り、`lab.new` は残らない |
+| `exp.py recollect` | 動いた。取得に失敗させた 1 秒の CPU(`os_cpu.json`)が取り直され、`valid.json` が「無効」から「有効」に戻った |
+
+**観察(結論ではない)**: `sha2` の run で、`max_open=2` の `tx-uses-db-inside` が 1,137 ms だった(1 回目の `native` の run では、約 78 ms)。1 run、1 回なので、`sha2` の認証が遅いのか、揺らぎなのかは、分からない。接続の確立のコストを比べるなら、`warmup` で、別に測る。
+
+**注意(CLI の出力)**: `aws rds modify-db-instance ... --query "DBInstance.[DBInstanceStatus,PendingModifiedValues]" --output text` は、CLI 側の整形エラー(`'str' object has no attribute 'items'`)になる。API の失敗ではない。`--query "DBInstance.DBInstanceStatus"` なら、動く。
+
 ### まだ確認していないこと
 
-| 項目 | 確認の方法 |
+| 項目 | 理由・確認の方法 |
 |---|---|
-| `rds:ModifyDBProxyTargetGroup` の実呼び出し(プールの割合を変える実験) | `lifecycle-sync` など、割合を変える実験の最初の run |
-| `rds:ModifyDBInstance`(クラスの切り替え)の実呼び出し | `cap` キャンペーン(IAM のシミュレーションでは、この 1 台だけ許可と確認済み) |
-| `proxyAuth=sha2` で動く | 別のデプロイで、小さな実験 |
-| `requireTls=false` での平文の比較(`plain-*` が実行される) | 別のデプロイ |
-| `budgetEmail` の予算の通知 | `-c budgetEmail=...` でのデプロイ |
-| 標準的なキャンペーン(数時間)の長さでの、`push` の入れ替え、`recollect` | 実際のキャンペーンの運用で |
+| `requireTls=false`(CDK のテンプレート)の実機 | `cdk synth` では `RequireTLS: False` を確認済み。実機で、`plain-*` の run が実行されることは、未確認。別のデプロイが要る |
+| `budgetEmail` の予算の通知 | 通知先のアドレスが要る(リポジトリに入れない方針)。**未実施** |
+| クラスの切り替え(`rds:ModifyDBInstance` で、`db.r6g.xlarge` へ)の実行 | 権限は、実呼び出しで確認した。クラス変更そのもの(10〜15 分、writer の再起動)は、`cap` キャンペーンで行う |
+| `sha2` で、ほかのシナリオ(`pat-pin` の `prep-false` のプリペアドなど)が動くか | `pat-gorm-pool` だけ確認した |
+| 標準的なキャンペーン(数時間)の長さでの運用 | 実際のキャンペーンの運用で |

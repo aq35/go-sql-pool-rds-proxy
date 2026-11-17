@@ -26,3 +26,6 @@ __pycache__/
 results/_smoke-*/*__*/*.r*/
 results/_smoke-*/*__*/status.json
 results/_smoke-*/*__*/expected.json
+results/_smoke-2026-11-17/*__*/*.r*/
+results/_smoke-2026-11-17/*__*/status.json
+results/_smoke-2026-11-17/*__*/expected.json
