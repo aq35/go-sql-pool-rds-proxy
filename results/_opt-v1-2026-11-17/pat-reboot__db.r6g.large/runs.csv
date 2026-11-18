@@ -1,0 +1,5 @@
+run,識別,n,reboot_issued_at_s,first_error_at_s,recovered_at_s,outage_s,ok,errors,error_kinds,new_connections,proxy_condition,proxy_client_max,proxy_client_sum,proxy_client_avg,proxy_dbconn_max,proxy_dbconn_sum,proxy_dbconn_avg,proxy_pinned_max,proxy_intx_max,proxy_nodes_est,aurora_cpu_p50,aurora_cpu_max,threads_running_max,threads_running_avg,threads_connected_max,db_questions_per_s_all_sessions,client_cpu_avg,client_cpu_max
+proxy-life0,lifetime_s=0.00 workers=10,1,45,48,54,6,95991,19,deadline-exceeded:10|invalid-connection:9,29,warm,7,10,5,5,10,5,0,0,2,4.7,64.4,4,2.02,60,-16413,0.8,12.4
+proxy-life30s,lifetime_s=30.00 workers=10,1,45,56,62,6,95949,17,deadline-exceeded:10|invalid-connection:7,136,warm,6,10,5,12,23,11.5,0,0,2,5,63.9,3,2,33,-7,0.5,10.5
+direct-life0,lifetime_s=0.00 workers=10,1,45,46,52,6,102620,1090,connection-refused:1080|invalid-connection:10,1100,warm,0,0,0,0,0,0,0,0,–,5,62.3,3,2,41,11,0.3,12.3
+direct-life30s,lifetime_s=30.00 workers=10,1,45,55,62,7,102639,1120,connection-refused:1120,1297,warm,0,0,0,0,0,0,0,0,–,5,67.5,3,2,20,-8,0.3,9.8

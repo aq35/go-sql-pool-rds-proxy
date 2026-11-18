@@ -1,0 +1,5 @@
+run,rep,status,client_sum,db_sum,pinned_sum,db_minus_client_sum,client_max,db_max,pinned_max,pin_ratio,cpu_p50,cpu_p95,cpu_max,borrowlat_max_us,hold_avg_ms,hold_p99_ms,wait_count,max_idle_closed,errors,db_minus_client_max,settle_min
+proxy-30,1,OK,30,24,,46,18,12,,,6.983,7.192,7.192,1707,9.2,12,0,0,0,25,5.8
+proxy-60,1,OK,60,46,,45,31,25,,,8.033,8.067,8.067,4169,9.71,14,0,0,0,25,5.7
+cluster-30,1,OK,0,10,,10,0,5,,,6.517,7.508,7.508,,5.23,5,0,0,0,5,1
+cluster-60,1,OK,0,10,,24,0,5,,,7.417,8.3,8.3,,5.25,5,0,0,0,13,0.4
