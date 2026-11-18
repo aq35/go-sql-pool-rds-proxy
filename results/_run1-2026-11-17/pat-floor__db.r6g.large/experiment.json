@@ -1,0 +1,23 @@
+{
+ "name": "pat-floor",
+ "question": "クライアントが 1 本もいないとき、Proxy 全体は、Aurora へ何本の接続を保持するか。前回の「5 本」は、Maximum(最も大きい 1 ノードの値)で測っていた。Sum(Proxy 全体)では何本か。Proxy は何ノードか",
+ "hypothesis": "Proxy は 2 ノードで、それぞれが 5 本ほどを保持しているので、DatabaseConnections の Sum は約 10、Maximum は約 5、Average は約 5 になる(スモークテストで、ClientConnections の Sum = 10、Maximum = 7、Average = 5.0 だったことからの推定)。",
+ "reading": "proxy_dbconn_sum、proxy_dbconn_max、proxy_dbconn_avg を並べて読む。Sum ÷ Average が、報告しているノード数の推定(proxy_nodes_est)。前回の A1「5 本」が、Maximum の値で、Proxy 全体は、その約 2 倍なら、仮説どおり。クライアントはいない(go_open_max などは出ない)ので、この run は、Proxy の裏の接続だけを見る。run の前に、DatabaseConnections(Maximum)が下限へ戻るのを待ってから始まる(floor は既定の 6)。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=idle",
+  "--duration=9m"
+ ],
+ "repeat": 2,
+ "observe_after_s": 60,
+ "required_metrics": [
+  "dbconn",
+  "cpu"
+ ],
+ "runs": [
+  {
+   "id": "no-clients",
+   "args": []
+  }
+ ]
+}

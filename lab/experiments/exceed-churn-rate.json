@@ -1,0 +1,38 @@
+{
+ "name": "exceed-churn-rate",
+ "question": "ピン留めされた接続の開閉頻度を上げると、残留は積み上がるか。上限(80)に達するか",
+ "hypothesis": "頻度に応じて残留が増える。ただし idle の上限や Proxy の上限で頭打ちになる。",
+ "reading": "3 つの頻度で dbconn の最大値と、run 後に下限へ戻る時間を比べる。client.log の failed(接続失敗)も見る。",
+ "scenario": "exceed",
+ "common": [
+  "--duration=10m"
+ ],
+ "repeat": 2,
+ "observe_after_s": 420,
+ "runs": [
+  {
+   "id": "rate0.25",
+   "args": [
+    "--exceed-mode=churn-getlock",
+    "--exceed-rate=0.25",
+    "--exceed-life=10s"
+   ]
+  },
+  {
+   "id": "rate2.5",
+   "args": [
+    "--exceed-mode=churn-getlock",
+    "--exceed-rate=2.5",
+    "--exceed-life=2s"
+   ]
+  },
+  {
+   "id": "rate12",
+   "args": [
+    "--exceed-mode=churn-getlock",
+    "--exceed-rate=12",
+    "--exceed-life=2s"
+   ]
+  }
+ ]
+}

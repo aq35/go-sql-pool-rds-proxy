@@ -1,0 +1,23 @@
+{
+ "name": "smoke",
+ "description": "デプロイ直後の動作確認(約 15 分): Proxy の設定変更と復元(DebugLogging)、TLS 必須での接続、1 秒の Aurora CPU、valid.json、インフラ不一致の run の記録、finish の検査。pat-pin の base を 1 回と、tls-latency の plain-same-0 を 1 回(TLS 必須のスタックでは実行されず、無効として記録されるのが正しい)",
+ "steps": [
+  {
+   "aurora_class": "db.r6g.large"
+  },
+  {
+   "exp": "pat-pin",
+   "repeat": 1,
+   "only": [
+    "base"
+   ]
+  },
+  {
+   "exp": "tls-latency",
+   "repeat": 1,
+   "only": [
+    "plain-same-0"
+   ]
+  }
+ ]
+}

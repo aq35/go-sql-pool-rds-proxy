@@ -1,0 +1,22 @@
+{
+ "name": "pat-gorm-pool",
+ "question": "MaxOpenConns を 1〜2 に絞ると、GORM のどの書き方で、アプリが固まるか(トランザクション中に別の接続が要る書き方)",
+ "hypothesis": "トランザクションの中で、tx ではなく db で別のクエリを呼ぶ書き方と、フックの中で db を使う書き方は、MaxOpenConns=1 で 3 秒のタイムアウトまで固まる。Preload と、関連を含む Create は、固まらない。MaxOpenConns=2 では、どれも固まらない。",
+ "reading": "pat-gorm-pool の summary.md で、test ごとに max_open=1 と 2 の result(ok / blocked)を比べる。blocked が、MaxOpenConns の下限が 2 以上であることの根拠。peak_in_use は短い操作では取りこぼしがある(参考値)。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=gorm-pool",
+  "--max-open=2,1",
+  "--duration=3m",
+  "--tls=skip-verify"
+ ],
+ "repeat": 3,
+ "floor": 100,
+ "observe_after_s": 20,
+ "runs": [
+  {
+   "id": "gorm",
+   "args": []
+  }
+ ]
+}

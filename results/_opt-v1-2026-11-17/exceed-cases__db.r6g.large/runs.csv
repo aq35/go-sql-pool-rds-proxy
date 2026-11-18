@@ -1,0 +1,4 @@
+run,rep,status,client_sum,db_sum,pinned_sum,db_minus_client_sum,client_max,db_max,pinned_max,pin_ratio,cpu_p50,cpu_p95,cpu_max,borrowlat_max_us,hold_avg_ms,hold_p99_ms,wait_count,max_idle_closed,errors,db_minus_client_max,settle_min
+churn-getlock,1,OK,3,10,3,10,3,5,3,0.081,5.992,7.417,7.417,3499,,,,,0,5,0.6
+churn-prepared,1,BORROW_SLOW,13,40,3,48,7,25,3,0.081,6.325,7.592,7.592,1.3169e+06,,,,,0,27,
+burst,1,BORROW_SLOW,40,54,,54,27,27,,,6.342,7.175,7.175,6.91176e+06,,,,,0,27,5.3

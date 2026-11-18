@@ -1,0 +1,24 @@
+version: "2"
+linters:
+  settings:
+    errcheck:
+      # Clean-up of a load generator: a failed Close() of a pool, connection or result set at the end of a run is not actionable.
+      # (Close errors that matter, e.g. of a transaction, are still reported.)
+      exclude-functions:
+        - (*database/sql.DB).Close
+        - (*database/sql.Conn).Close
+        - (*database/sql.Rows).Close
+        - (database/sql/driver.Conn).Close
+        - os.Setenv
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        # "could remove embedded field": trackedConn defines its own Prepare/Begin that call the embedded driver.Conn; dropping
+        # the selector would recurse into itself.
+        - -QF1008

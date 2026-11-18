@@ -1,0 +1,55 @@
+{
+ "name": "day1",
+ "description": "測定フェーズ: 2 vCPU(r6g.large)で capacity・churn-cost(tls-latency)・idle-sweep・pinning-impact・lifecycle-sync、4 vCPU(r6g.xlarge)で capacity。約 10 時間。終了後 scripts/derive_coeffs.py で係数を出し、campaign day2(検証)を流す",
+ "steps": [
+  {
+   "aurora_class": "db.r6g.large"
+  },
+  {
+   "exp": "capacity-curve",
+   "repeat": 2,
+   "only": [
+    "mixed",
+    "cpu"
+   ]
+  },
+  {
+   "exp": "tls-latency",
+   "repeat": 2,
+   "only": [
+    "tls-cross-0",
+    "tls-cross-2",
+    "tls-cross-5",
+    "tls-cross-10"
+   ]
+  },
+  {
+   "exp": "idle-sweep",
+   "repeat": 2,
+   "only": [
+    "idle0",
+    "idle5",
+    "idle10"
+   ]
+  },
+  {
+   "exp": "pinning-impact",
+   "repeat": 2
+  },
+  {
+   "exp": "lifecycle-sync",
+   "repeat": 2
+  },
+  {
+   "aurora_class": "db.r6g.xlarge"
+  },
+  {
+   "exp": "capacity-curve",
+   "repeat": 2,
+   "only": [
+    "mixed",
+    "cpu"
+   ]
+  }
+ ]
+}

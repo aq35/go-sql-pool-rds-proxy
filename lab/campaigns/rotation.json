@@ -1,0 +1,9 @@
+{
+ "name": "rotation",
+ "description": "Secrets Manager のパスワード回転: 既存の接続が使えるか、入れ替え方式(固定 / 動的な認証情報)、ピン留めの影響。6 run、約 3.5 時間",
+ "steps": [
+  {
+   "exp": "secret-rotation"
+  }
+ ]
+}

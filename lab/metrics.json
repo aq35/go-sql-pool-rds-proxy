@@ -1,0 +1,127 @@
+{
+  "_comment": "One place for which CloudWatch metrics are collected and with which statistic. Gauges use Maximum; counters use Sum. Namespace AWS/RDS, dimension ProxyName. instance_metrics are AWS/RDS with dimension DBInstanceIdentifier=$WRITER_INSTANCE_ID. cluster_metrics are AWS/RDS with dimension DBClusterIdentifier=$DB_CLUSTER_ID (billed Aurora I/O, Sum over the window). extra_stats: the same gauge is also fetched with these statistics (stored as <key>__<Stat>). AWS documents Sum as the most useful statistic for the RDS Proxy connection gauges and publishes them per underlying proxy instance, so Maximum alone may see only the busiest instance: compare both before trusting a count (docs/metrics.md).",
+  "proxy_name": "rdsproxy-exp",
+  "metrics": [
+    {
+      "key": "client",
+      "name": "ClientConnections",
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
+    },
+    {
+      "key": "dbconn",
+      "name": "DatabaseConnections",
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
+    },
+    {
+      "key": "pinned",
+      "name": "DatabaseConnectionsCurrentlySessionPinned",
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
+    },
+    {
+      "key": "borrowed",
+      "name": "DatabaseConnectionsCurrentlyBorrowed",
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
+    },
+    {
+      "key": "intx",
+      "name": "DatabaseConnectionsCurrentlyInTransaction",
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
+    },
+    {
+      "key": "allowed",
+      "name": "MaxDatabaseConnectionsAllowed",
+      "stat": "Maximum",
+      "extra_stats": [
+        "Sum",
+        "Average"
+      ]
+    },
+    {
+      "key": "created",
+      "name": "DatabaseConnectionsSetupSucceeded",
+      "stat": "Sum"
+    },
+    {
+      "key": "dbfailed",
+      "name": "DatabaseConnectionsSetupFailed",
+      "stat": "Sum"
+    },
+    {
+      "key": "authfail",
+      "name": "ClientConnectionsSetupFailedAuth",
+      "stat": "Sum"
+    },
+    {
+      "key": "borrowlat",
+      "name": "DatabaseConnectionsBorrowLatency",
+      "stat": "Maximum",
+      "extra_stats": [
+        "Average"
+      ]
+    }
+  ],
+  "instance_metrics": [
+    {
+      "key": "cpu",
+      "name": "CPUUtilization",
+      "stat": "Maximum"
+    },
+    {
+      "key": "cpu_avg",
+      "name": "CPUUtilization",
+      "stat": "Average"
+    },
+    {
+      "key": "aurora_conn",
+      "name": "DatabaseConnections",
+      "stat": "Maximum"
+    },
+    {
+      "key": "read_iops",
+      "name": "ReadIOPS",
+      "stat": "Average"
+    },
+    {
+      "key": "write_iops",
+      "name": "WriteIOPS",
+      "stat": "Average"
+    },
+    {
+      "key": "commit_lat",
+      "name": "CommitLatency",
+      "stat": "Average"
+    }
+  ],
+  "cluster_metrics": [
+    {
+      "key": "vol_read_ios",
+      "name": "VolumeReadIOPs",
+      "stat": "Sum"
+    },
+    {
+      "key": "vol_write_ios",
+      "name": "VolumeWriteIOPs",
+      "stat": "Sum"
+    }
+  ]
+}

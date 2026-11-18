@@ -1,0 +1,46 @@
+{
+ "name": "pat-limit",
+ "question": "上限は、どこにあるか。(1) 直結で、Aurora の max_connections(100)に達したとき、何本目で、どんなエラーか。(2) Proxy は、アイドルのクライアント接続を、何本まで受けて、その間、Aurora の接続は、増えるか。(3) 忙しいクライアントが Proxy の裏の上限(80)を超えたとき、超えた分は、どうなるか(BorrowTimeout 30 秒)",
+ "hypothesis": "(1) 直結は、100 から、Proxy が保持する分(アイドル 10 本)と、監視用の接続を引いた本数のあたりで、MySQL のエラー 1040(Too many connections)になる。(2) Proxy は、400 本のアイドルクライアントを受け付け、Aurora の接続は、アイドルの 10 本のままで増えない。(3) 忙しいクライアント(SLEEP 中)が 80 を超えると、超えた分は、BorrowTimeout(30 秒)ほど待たされ、エラーになる(エラーが出るまでの時間が約 30 秒)。",
+ "reading": "direct-exhaust: opened、failed、first_failure_at_connection、error_kinds(mysql-1040)。idle-clients: opened / failed と、proxy_client_sum、proxy_dbconn_sum(クライアントが多くても、Aurora の接続が増えないか)。busy-clients: ok、errors、error_after_p50_s / error_after_max_s(約 30 秒なら、BorrowTimeout)、proxy_dbconn_sum が、上限(MaxDatabaseConnectionsAllowed)に達したか。",
+ "scenario": "patterns",
+ "common": [
+  "--duration=6m"
+ ],
+ "repeat": 1,
+ "observe_after_s": 15,
+ "required_metrics": [
+  "cpu"
+ ],
+ "runs": [
+  {
+   "id": "direct-exhaust",
+   "target": "cluster",
+   "args": [
+    "--mode=limit",
+    "--variant=direct-exhaust",
+    "--conns=130",
+    "--hold=20s"
+   ]
+  },
+  {
+   "id": "idle-clients-400",
+   "args": [
+    "--mode=limit",
+    "--variant=idle-clients",
+    "--conns=400",
+    "--hold=120s"
+   ]
+  },
+  {
+   "id": "busy-clients-100",
+   "args": [
+    "--mode=limit",
+    "--variant=busy-clients",
+    "--conns=100",
+    "--hold=90s"
+   ]
+  }
+ ],
+ "collect_later": true
+}

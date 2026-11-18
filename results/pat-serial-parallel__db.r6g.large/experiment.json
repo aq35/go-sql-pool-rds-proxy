@@ -1,0 +1,114 @@
+{
+ "name": "pat-serial-parallel",
+ "question": "1 リクエストが 5 つのクエリを実行するとき、1 本の接続で順に(直列)と、5 本で同時に(並列)では、どちらが速いか。負荷が上がると、逆転するか",
+ "hypothesis": "負荷が低いうちは並列のほうが速い。Aurora の CPU が飽和に近づく(2 vCPU の cpu mix で、リクエスト毎秒 70 付近)と、並列は p99 が悪化し、MaxOpenConns が小さい(6)ときは、接続待ち(wait_count)で、直列より悪くなる。CPU 飽和後は、どちらも処理量が増えない。",
+ "reading": "同じ max_open と rps で、serial と parallel の p50 / p99 を比べる。逆転する rps と、そのときの Aurora の CPU(summary の cpu 列)と wait_count を読む。dropped が 0 でない run は、限界を超えているので、遅延は参考値。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=serial-parallel",
+  "--mix=cpu",
+  "--measure=60s",
+  "--duration=10m"
+ ],
+ "repeat": 2,
+ "floor": 100,
+ "observe_after_s": 30,
+ "runs": [
+  {
+   "id": "serial-o20-r30",
+   "args": [
+    "--variant=serial",
+    "--rps=30",
+    "--max-open=20"
+   ]
+  },
+  {
+   "id": "parallel-o20-r30",
+   "args": [
+    "--variant=parallel",
+    "--rps=30",
+    "--max-open=20"
+   ]
+  },
+  {
+   "id": "serial-o20-r55",
+   "args": [
+    "--variant=serial",
+    "--rps=55",
+    "--max-open=20"
+   ]
+  },
+  {
+   "id": "parallel-o20-r55",
+   "args": [
+    "--variant=parallel",
+    "--rps=55",
+    "--max-open=20"
+   ]
+  },
+  {
+   "id": "serial-o20-r70",
+   "args": [
+    "--variant=serial",
+    "--rps=70",
+    "--max-open=20"
+   ]
+  },
+  {
+   "id": "parallel-o20-r70",
+   "args": [
+    "--variant=parallel",
+    "--rps=70",
+    "--max-open=20"
+   ]
+  },
+  {
+   "id": "serial-o6-r30",
+   "args": [
+    "--variant=serial",
+    "--rps=30",
+    "--max-open=6"
+   ]
+  },
+  {
+   "id": "parallel-o6-r30",
+   "args": [
+    "--variant=parallel",
+    "--rps=30",
+    "--max-open=6"
+   ]
+  },
+  {
+   "id": "serial-o6-r55",
+   "args": [
+    "--variant=serial",
+    "--rps=55",
+    "--max-open=6"
+   ]
+  },
+  {
+   "id": "parallel-o6-r55",
+   "args": [
+    "--variant=parallel",
+    "--rps=55",
+    "--max-open=6"
+   ]
+  },
+  {
+   "id": "serial-o6-r70",
+   "args": [
+    "--variant=serial",
+    "--rps=70",
+    "--max-open=6"
+   ]
+  },
+  {
+   "id": "parallel-o6-r70",
+   "args": [
+    "--variant=parallel",
+    "--rps=70",
+    "--max-open=6"
+   ]
+  }
+ ]
+}

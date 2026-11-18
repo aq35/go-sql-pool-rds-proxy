@@ -1,0 +1,62 @@
+{
+ "name": "trigger-isolation",
+ "question": "Proxy が Aurora の接続を保持する原因は何か(ログインだけ、Ping、SELECT 1、プリペアド、GET_LOCK)",
+ "hypothesis": "ログイン、Ping 1 回、SELECT 1 は保持しない(下限のまま)。プリペアドと GET_LOCK は、ピン留めされた接続数だけ保持し、RELEASE_LOCK では解除されない。",
+ "reading": "各 run の dbconn と pinned の最大値を、connect(対照)と比べる。ソケットを閉じたあと下限に戻るまでの時間も見る。",
+ "scenario": "trigger",
+ "common": [
+  "--duration=12m"
+ ],
+ "repeat": 1,
+ "observe_after_s": 120,
+ "runs": [
+  {
+   "id": "connect",
+   "args": [
+    "--trigger-mode=connect"
+   ]
+  },
+  {
+   "id": "ping",
+   "args": [
+    "--trigger-mode=ping"
+   ]
+  },
+  {
+   "id": "ping-loop",
+   "args": [
+    "--trigger-mode=ping-loop"
+   ]
+  },
+  {
+   "id": "select1",
+   "args": [
+    "--trigger-mode=select1"
+   ]
+  },
+  {
+   "id": "prepared",
+   "args": [
+    "--trigger-mode=prepared"
+   ]
+  },
+  {
+   "id": "getlock",
+   "args": [
+    "--trigger-mode=getlock"
+   ]
+  },
+  {
+   "id": "getlock-release",
+   "args": [
+    "--trigger-mode=getlock-release"
+   ]
+  },
+  {
+   "id": "getlock-close",
+   "args": [
+    "--trigger-mode=getlock-close"
+   ]
+  }
+ ]
+}

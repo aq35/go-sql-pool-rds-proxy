@@ -1,0 +1,28 @@
+{
+ "name": "cap",
+ "description": "capacity だけ: 2 vCPU(r6g.large)と 4 vCPU(r6g.xlarge)で、同時数の限界点と、その時の Aurora CPU(原因の切り分け)を測る。約 3 時間",
+ "steps": [
+  {
+   "aurora_class": "db.r6g.large"
+  },
+  {
+   "exp": "capacity-curve",
+   "repeat": 2,
+   "only": [
+    "mixed",
+    "cpu"
+   ]
+  },
+  {
+   "aurora_class": "db.r6g.xlarge"
+  },
+  {
+   "exp": "capacity-curve",
+   "repeat": 2,
+   "only": [
+    "mixed",
+    "cpu"
+   ]
+  }
+ ]
+}

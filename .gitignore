@@ -1,0 +1,37 @@
+node_modules
+cdk.out
+dist
+*.js
+!jest.config.js
+lab/lab
+lab/go.sum.bak
+.venv
+lab/out
+lab/net.env
+infra/cdk.out
+lab/VERSION
+
+# generated: contains the AWS account id
+infra/cdk.context.json
+results/exp-*/
+# raw per-run data (client.log contains the endpoint host names): keep summaries only
+results/*__*/*.r*/
+results/*__*/status.json
+results/*__*/expected.json
+
+__pycache__/
+*.pyc
+
+# smoke-test raw runs (same rule as the other results)
+results/_smoke-*/*__*/*.r*/
+results/_smoke-*/*__*/status.json
+results/_smoke-*/*__*/expected.json
+results/_smoke-2026-11-17/*__*/*.r*/
+results/_smoke-2026-11-17/*__*/status.json
+results/_smoke-2026-11-17/*__*/expected.json
+
+# any results/_*/ folder (smoke tests, flawed first runs): raw runs stay local
+results/_*/*__*/*.r*/
+results/_*/*__*/status.json
+results/_*/*__*/expected.json
+lab/lab-v181

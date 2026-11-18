@@ -1,0 +1,39 @@
+{
+ "name": "pat-control",
+ "question": "何も変えない同じ条件を繰り返すと、結果は、どれだけばらつくか(ほかの実験の「差」が、揺らぎの範囲かを判断する物差し)",
+ "hypothesis": "同じ条件の繰り返しでも、p99 は、数割ばらつく。p50 や、タイムアウトの割合は、より安定している。",
+ "reading": "同じ run id の 5 回の、p50_success_ms、p99_success_ms、within_slo_pct、goodput_qps の、最小〜最大(summary の [最小–最大])を読む。ほかの実験で、2 つの条件の差が、この範囲より小さければ、差とは言えない。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=serial-parallel",
+  "--mix=cpu",
+  "--measure=60s",
+  "--duration=10m",
+  "--max-open=20",
+  "--rps=55"
+ ],
+ "repeat": 5,
+ "floor": 100,
+ "observe_after_s": 15,
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
+ ],
+ "runs": [
+  {
+   "id": "serial",
+   "args": [
+    "--variant=serial"
+   ]
+  },
+  {
+   "id": "parallel",
+   "args": [
+    "--variant=parallel"
+   ]
+  }
+ ],
+ "collect_later": true
+}

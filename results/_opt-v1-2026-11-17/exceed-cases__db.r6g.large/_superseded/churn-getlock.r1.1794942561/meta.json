@@ -1,0 +1,51 @@
+{
+ "experiment": "exceed-cases",
+ "go_version": "go1.27.4",
+ "go_deps": {
+  "filippo.io/edwards25519": "v1.2.0",
+  "github.com/go-sql-driver/mysql": "v1.10.1",
+  "github.com/jinzhu/inflection": "v1.0.0",
+  "github.com/jinzhu/now": "v1.1.5",
+  "golang.org/x/text": "v0.44.0",
+  "gorm.io/driver/mysql": "v1.6.0",
+  "gorm.io/gorm": "v1.31.2"
+ },
+ "aurora_class": "db.r6g.large",
+ "run_id": "churn-getlock",
+ "rep": 1,
+ "args": [
+  "--scenario=exceed",
+  "--duration=10m",
+  "--exceed-mode=churn-getlock",
+  "--exceed-rate=0.25",
+  "--exceed-life=10s"
+ ],
+ "git": "654a239",
+ "binary_sha256": "7fedd2a7d817a53ba4ca6398f4895f6e6a2c0f22115d4d0f1a23680c62988832",
+ "manifest": "4bb43a15d5f72758df5198209cfc81310b776c42ccbb8bade22985cb1afb6ed7",
+ "start": "2026-11-17T05:22:37Z",
+ "run_end": "2026-11-17T05:32:38Z",
+ "rc": 0,
+ "baseline": {
+  "floor": 6,
+  "last_points": [
+   5.0,
+   5.0
+  ],
+  "waited_s": 0,
+  "unmet": false
+ },
+ "infra": {
+  "require_tls": "false",
+  "proxy_auth": "native",
+  "env_id": "exp",
+  "proxy_name": "rdsproxy-exp"
+ },
+ "proxy_settings": {
+  "IdleClientTimeout": 1800,
+  "MaxConnectionsPercent": 80,
+  "MaxIdleConnectionsPercent": 10,
+  "DebugLogging": false
+ },
+ "condition": "settled (Proxy connections at the floor)"
+}

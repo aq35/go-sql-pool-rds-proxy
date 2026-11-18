@@ -1,0 +1,33 @@
+{
+ "name": "pat-idle-gap",
+ "question": "Proxy の IdleClientTimeout(60 秒)を、1 本の接続のアイドル時間が超えたとき、Go はエラーになるか、透過的に再接続するか。再接続は 1 クエリあたり何本か。ConnMaxIdleTime(45 秒)で、どう変わるか",
+ "hypothesis": "1 本の接続のアイドル時間が 60 秒未満(gap 30、55 秒)なら、新規接続はほぼ 0。60 秒を超える(gap 65、90 秒)と、Proxy が接続を切り、プールを使う場合は透過的に再接続する(エラー 0、新規接続は 1 クエリにつき約 1 本)。db.Conn で専用に持つ場合は、database/sql が再試行しないので、切られた接続のクエリはエラーになる(app_reconnects が増える)。ConnMaxIdleTime=45 秒だと、gap 55 秒で、Go が先に閉じるので、1 クエリにつき約 1 本の再接続になる。",
+ "reading": "1 回の run で、すべての条件を同時に動かしている(接続が別で、互いに干渉しない)。結果の行は、workers と dedicated と idle_time_s と gap_s で見分ける: workers=1 dedicated=false idle_time_s=0 = 接続 1 本の対照(プールが接続を持つ)、workers=3 dedicated=true = 各ワーカーが db.Conn を専有(再試行なし)、workers=1 idle_time_s=45 = ConnMaxIdleTime=45 秒。new_conn_per_query、errors、app_reconnects、p50 / p99、actual_idle_before_query_s_p50(実際の間隔)を、gap ごとに読む。Proxy の IdleClientTimeout は、この実験の間だけ 60 秒に変える(終わると元に戻す)。",
+ "scenario": "patterns",
+ "common": [
+  "--mode=idle-gap-matrix",
+  "--gaps=30s,55s,65s,90s",
+  "--idle-time=45s",
+  "--tls=skip-verify",
+  "--duration=8m"
+ ],
+ "repeat": 2,
+ "floor": 100,
+ "observe_after_s": 15,
+ "proxy": {
+  "IdleClientTimeout": 60
+ },
+ "runs": [
+  {
+   "id": "matrix",
+   "args": []
+  }
+ ],
+ "required_metrics": [
+  "client",
+  "dbconn",
+  "cpu",
+  "os_cpu"
+ ],
+ "collect_later": true
+}

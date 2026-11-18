@@ -1,0 +1,182 @@
+name: CI
+
+# Every pull request shows these as separate checks: format, lint, tests, vulnerabilities, and a content policy.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go (fmt, vet, lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lab
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: lab/go.mod       # the version the lab is built with (EC2 fetches the same toolchain: GOTOOLCHAIN=auto)
+          cache-dependency-path: lab/go.sum
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "::error::gofmt needed on:"; echo "$out"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          working-directory: lab
+      - name: go test (race, coverage)
+        run: |
+          go test -race -coverprofile=cover.out ./... | tee test.txt
+          { echo "### go test"; echo '```'; cat test.txt; go tool cover -func=cover.out | tail -1; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: build and validate experiment definitions
+        run: |
+          go build -o lab .
+          python3 -I exp.py check
+      - name: cross-compile for the EC2 client (linux/arm64)
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o /tmp/lab-linux-arm64 .
+
+  govulncheck:
+    name: Go vulnerabilities (govulncheck gate)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lab
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: lab/go.mod
+          cache-dependency-path: lab/go.sum
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - name: text report (always shown)
+        # govulncheck exits 0 = nothing, 3 = vulnerabilities found. Anything else (e.g. 2) is the TOOL failing: that must fail the job.
+        run: |
+          set +e
+          govulncheck ./... > vuln.txt 2>&1
+          code=$?
+          set -e
+          { echo "### govulncheck (exit $code)"; echo '```'; tail -40 vuln.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then echo "::error title=govulncheck::the tool failed (exit $code), so nothing was scanned"; exit 1; fi
+      - name: gate (blocking)
+        # Fails on any CALLED vulnerability that is not in docs/known-vulnerabilities.json (empty today), or whose entry has
+        # expired, and on input that shows the tool did not run. See docs/known-vulnerabilities.md
+        run: |
+          govulncheck -json ./... > vuln.json
+          python3 ../scripts/vuln_gate.py vuln.json ../docs/known-vulnerabilities.json
+
+  python:
+    name: Python (lint, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.17.5
+      - name: ruff (syntax errors, undefined / unused names)
+        run: ruff check lab/*.py scripts/*.py --select E9,F
+      - name: compile
+        run: python -I -m py_compile lab/exp.py lab/rules.py scripts/summarize.py scripts/finish.py scripts/derive_coeffs.py scripts/gen_validation.py scripts/fetch_pricing.py
+      - name: unit tests
+        working-directory: lab
+        run: |
+          python test_rules.py
+          python ../scripts/test_vuln_gate.py
+          python ../scripts/test_check_pitfalls.py
+          python -m unittest -v test_exp 2>&1 | tee ../unittest.txt
+          { echo "### python unit tests"; echo '```'; tail -5 ../unittest.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  integration:
+    name: "Integration (real MySQL - pool pitfalls, GORM pool)"
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-throwaway
+          MYSQL_DATABASE: app
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-only-throwaway"
+          --health-interval=5s --health-timeout=5s --health-retries=24
+    defaults:
+      run:
+        working-directory: lab
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: lab/go.mod
+          cache-dependency-path: lab/go.sum
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: go build -o lab .
+      - name: run the probes against MySQL and assert the outcomes
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: "3306"
+          DB_USER: root
+          DB_PASS: ci-only-throwaway
+          DB_NAME: app
+        run: |
+          ./lab --scenario=patterns --mode=pitfalls --duration=2m | tee pitfalls.txt
+          ./lab --scenario=patterns --mode=gorm-pool --max-open=2,1 --duration=2m | tee gorm.txt
+          python3 ../scripts/check_pitfalls.py pitfalls.txt gorm.txt | tee check.txt
+          { echo "### database/sql and GORM pitfalls (real MySQL 8.0)"; echo '```'; cat check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  shell:
+    name: Shell (shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: shellcheck
+        run: shellcheck -S warning lab/*.sh scripts/*.sh
+
+  infra:
+    name: Infra (CDK type-check, synth, npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - run: npm ci
+      - name: tsc
+        run: npx tsc --noEmit -p .
+      - name: cdk synth (template only; no AWS credentials or account needed)
+        run: npx cdk synth --quiet
+      - name: npm audit (blocking at high / critical)
+        run: npm audit --audit-level=high
+      - name: npm audit (all severities, report only)
+        run: |
+          npm audit > ../audit.txt 2>&1 || true
+          { echo "### npm audit (all severities)"; echo '```'; tail -30 ../audit.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  policy:
+    name: No credentials / account ids / endpoints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/check-no-sensitive.sh

@@ -1,0 +1,2 @@
+run,rep,status,client_max,db_max,pinned_max,pin_ratio,cpu_p50,cpu_p95,cpu_max,borrowlat_max_us,hold_avg_ms,hold_p99_ms,wait_count,max_idle_closed,errors,db_minus_client_max,settle_min
+plain-same-0,1,RUN_FAILED,,,,,,,,,,,,,0,,

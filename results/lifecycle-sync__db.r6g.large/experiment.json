@@ -1,0 +1,49 @@
+{
+ "name": "lifecycle-sync",
+ "question": "アプリの ConnMaxIdleTime と、Proxy の IdleClientTimeout の関係で、接続エラー(invalid / bad connection、EOF)や再接続による遅延が出る境界はどこか",
+ "hypothesis": "ConnMaxIdleTime が IdleClientTimeout 未満なら、エラーも再接続の遅延スパイクも出ない。IdleClientTimeout を超える(または未設定)と、Proxy に切られた接続の再接続が起き、p99 が悪化する。go-sql-driver は idle 接続の切断を検知して透過的に再接続するため、エラーは 0 のままで、遅延だけに出る可能性もある。",
+ "reading": "run ごとに、エラー数と p99(summary.md)を比べる。ConnMaxIdleTime / IdleClientTimeout の比が 1 未満の run と、1 以上の run を分けて読む。エラーが 0 でも p99 が悪化するなら、ルールは「比を 0.5〜0.8 にする」を支持。フェイルオーバーは、この実験では扱わない。",
+ "scenario": "pool-load",
+ "common": [
+  "--duration=8m",
+  "--containers=3",
+  "--total-conns=18",
+  "--workers-per-pool=6",
+  "--hold=5ms",
+  "--query-every=60s",
+  "--lifetime=0",
+  "--rotate-every=24h",
+  "--interpolate=true",
+  "--lock-mode=none",
+  "--tls=skip-verify"
+ ],
+ "repeat": 2,
+ "observe_after_s": 360,
+ "proxy": {
+  "IdleClientTimeout": 60
+ },
+ "runs": [
+  {
+   "id": "idle-none",
+   "args": []
+  },
+  {
+   "id": "idle-30s",
+   "args": [
+    "--idle-time=30s"
+   ]
+  },
+  {
+   "id": "idle-50s",
+   "args": [
+    "--idle-time=50s"
+   ]
+  },
+  {
+   "id": "idle-90s",
+   "args": [
+    "--idle-time=90s"
+   ]
+  }
+ ]
+}

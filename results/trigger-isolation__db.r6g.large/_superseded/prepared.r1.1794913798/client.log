@@ -1,0 +1,5 @@
+2026/11/17 09:04:46 TRIGGER-EVENT connecting mode=prepared k=10
+2026/11/17 09:04:46 TRIGGER-EVENT connected mode=prepared k=10
+2026/11/17 09:05:06 TRIGGER-EVENT action-done mode=prepared k=10
+2026/11/17 09:09:06 TRIGGER-EVENT sockets-closed mode=prepared k=10
+2026/11/17 09:14:06 TRIGGER-EVENT end mode=prepared k=10

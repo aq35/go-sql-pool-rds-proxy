@@ -1,0 +1,13 @@
+run,識別,n,result,ms,peak_in_use,proxy_client_max,proxy_dbconn_max,proxy_pinned_max,proxy_intx_max
+gorm,max_open=2 test=tx-uses-tx,3,ok,41.2 [18.37–54.13],1,0,0,0,0
+gorm,max_open=2 test=tx-uses-db-inside,3,ok,78.19 [59.52–175],2,0,0,0,0
+gorm,max_open=2 test=preload-two,3,ok,24.29 [14–37.88],1,0,0,0,0
+gorm,max_open=2 test=create-with-associations,3,ok,30.92 [23.41–129],1,0,0,0,0
+gorm,max_open=2 test=hook-uses-tx,3,ok,17.63 [17.04–66.41],1,0,0,0,0
+gorm,max_open=2 test=hook-uses-global-db,3,ok,46.36 [25.24–48.2],2,0,0,0,0
+gorm,max_open=1 test=tx-uses-tx,3,ok,25.24 [18.98–33.79],1,0,0,0,0
+gorm,max_open=1 test=tx-uses-db-inside,3,blocked,3001 [3000–3001],1,0,0,0,0
+gorm,max_open=1 test=preload-two,3,ok,44.7 [22.68–57.1],1,0,0,0,0
+gorm,max_open=1 test=create-with-associations,3,ok,41.24 [24.06–48.69],1,0,0,0,0
+gorm,max_open=1 test=hook-uses-tx,3,ok,23.23 [18.15–38.82],1,0,0,0,0
+gorm,max_open=1 test=hook-uses-global-db,3,blocked,3001 [3000–3001],1,0,0,0,0
