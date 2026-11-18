@@ -227,3 +227,71 @@ Proxy の IdleClientTimeout を 60 秒にし、各ワーカーが約 60 秒お�
 | P2 パスワードを引数で渡す | 0600 の一時ファイルから `mysql --defaults-extra-file` で読み、終了時に削除。コマンドライン、ログに出ない |
 
 **未検証が多い理由**: AWS のスタックは、レビューの前に削除を始めていた。新しい実装は、`make check` と、ローカルの MySQL での一部の確認(`idle-gap` の `dedicated` の動作は未確認)だけで、AWS での実行は、まだ行っていない。
+
+## 12. opt-v1(2026-11-17、Sum 主、15 実験・全 run 有効)の追加結果
+
+出典: `results/_opt-v1-2026-11-17/`(CloudWatch は実験後に再取得)。各条件 1 回のものは傾向として読む。`proxy_condition=warm` の run は、前の run の接続が残る可能性がある。
+
+### 12.1 ピン留めされる設定(pat-pin、10 ワーカー、各 1 回)
+
+| 設定 | pinned Sum | 根拠・注意 |
+|---|---|---|
+| base | 0 | |
+| `interpolateParams=false` | 10 | Aurora の prepare が 17,219 回(クエリごと)。pat-driver-ab でも v1.8.1 / v1.10.1 とも 10 |
+| GORM `PrepareStmt` | 10 | prepare は接続ごとに 1 回(10 回)。pat-driver-ab でも同じ |
+| `time_zone` を DSN で SET | **0** | 先行調査と一致。session の time_zone は +09:00 になっている |
+| `sql_mode` を DSN で SET | **0** | |
+| `sql_select_limit` / ユーザー変数 / `max_execution_time` を SET | 10 | 追跡できない変数は、ピン留めされる |
+| `wait_timeout` を SET | **0** | |
+| `autocommit=0` | pinned 0、InTransaction 10 | 接続が常にトランザクション内になる |
+| 長いトランザクション | pinned 10、InTransaction 10 | **要確認**(下記) |
+| `loc` だけ | 10 と出たが **疑わしい** | SET が走らないはず。直前の run が `prep-false` で、前後の run が混ざった可能性 |
+
+- 窓の混ざりがあるため、1 回の run の pinned は断定しない。確度が高いのは Aurora 側の prepare 数と、0 になった変種(base、time_zone、sql_mode、wait_timeout)。
+- 長いトランザクションがピン留めに出るかは、前後の run の影響を切り分けていない(要追試)。
+
+### 12.2 ドライバ v1.8.1 と v1.10.1(pat-driver-ab)
+
+- prepare 数、pinned、エラー(各 0)は、2 つの版で同じ。コールドの 1 回目は p50 15.4 ms(新)/ 12.7 ms(旧)、2 回目は 4.8 ms で、差は誤差の範囲。
+- 切れた接続への再接続は、どちらの版も 1 回、エラーなしで行った(matrix の errors=1 は両方の版に出ている)。
+- 結論: 前回の結果との差は、ドライバの版ではなく条件の違い。
+
+### 12.3 一斉寿命(pat-stampede、ConnMaxLifetime=60 s、32 本)
+
+| 条件 | 1 秒あたりの新規接続の最大 | 秒ごとの p99 の最大(ms) | 定常 p99(ms) |
+|---|---|---|---|
+| sync | 15 [14–16] | 113 [72–153] | 8.7 |
+| staggered | 9.5 [9–10] | 79 [54–105] | 9.3 |
+| lifetime=0 | 0 | 44 [38–50] | 9.1 |
+
+- 新規接続の山は、staggered で約 1/3 減る。
+- p99 のスパイクは sync > staggered の向きだが、範囲が重なる(2 回ずつ)。確定ではない。lifetime=0 にも 44 ms のスパイクがあり、寿命以外の揺らぎもある。
+- 定常の p50 / p99 は 3 条件でほぼ同じ。
+
+### 12.4 混在負荷(pat-mixed、サイト 10 / 40 × プール設定 × Web の流し方、各 1 回)
+
+| 条件 | エラー | 全体 p99(ms) | Proxy の Aurora 接続 Sum | pinned Sum | idle で閉じた数 |
+|---|---|---|---|---|---|
+| 10 サイト、GORM 既定、直列 | 0 | 17.9 | 23 | 10 | 459 |
+| 10 サイト、ルール値、直列 | 0 | 13.4 | 24 | 10 | 0 |
+| 10 サイト、ルール値、並列 | 0 | 13.4 | 41 | 10 | 223 |
+| 40 サイト、GORM 既定、直列 | 0 | 18.4 | 52 | 40 | 434 |
+| 40 サイト、ルール値、直列 | 0 | 14.7 | 56 | 40 | 0 |
+| 40 サイト、ルール値、並列 | 0 | 13.2 | **71** | 40 | 172 |
+
+- サイトの GET_LOCK の専用接続は、1 サイト = pinned 1 本(10 → 10、40 → 40)。
+- **40 サイト + 並列で、Aurora 接続が 71 本に達し、Proxy の上限 74 に近づく。** 本番の 10 倍規模(800 本)の説明として、「ピン留め + 並列」が有力。
+- GORM 既定(MaxIdle 2)は、idle で閉じる接続が多い(約 450)が、この負荷では、p99 の悪化は +4 ms 程度で、エラーはない。
+- 仮説「サイト 40 で待ちが増える」は、MaxOpen 22 のままでは pool_wait_count が 0 で、確認できなかった。
+
+### 12.5 上限を超える接続数(exceed-cases)
+
+- 40 本のバースト(burst)で、Proxy の Aurora 接続は Sum 54(クライアント Sum 40)。終了後、下限に戻るまで約 5.3 分。
+- churn-prepared(prepare を繰り返す短命接続)は、クライアント Sum 13 に対し Aurora 接続 Sum 40 で、**DB−Client が 48**。短命でピン留めされる接続は、Aurora 側に残る。
+- GET_LOCK を繰り返す churn-getlock は、下限 10 のまま。
+
+### 12.6 未解決
+
+- `SLEEP(0.5)` を Proxy 経由で流すと、Aurora 側で同時に動くクエリが約 10 本で頭打ちになる(Proxy は 32 本の接続を開いている)。直結との比較が必要。
+- pat-limit の busy-clients は、ドライバの ReadTimeout(60 秒)が SLEEP(90 秒)より短く、無効。hold を 45 秒にして再実行が必要(再デプロイが必要)。
+- §10 の #1(窓の混ざり)は、opt-v1 でも残る。run の間隔を空けた再実行が必要。
